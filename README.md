@@ -1,48 +1,87 @@
 # Project Strike
 
-High-realism, mobile-first browser FPS foundation targeting iPhone and desktop.
+High-realism, mobile-first tactical FPS for the browser. The project targets iPhone-class hardware and desktop from one Three.js codebase, using LOD, compressed/streamed assets and scalable effects instead of maintaining a separate mobile game.
 
-## Current playable foundation
+## Build status
 
-- Three.js tactical test range / Killhouse blockout.
-- Desktop WASD + pointer-lock mouse look.
-- Mobile dual-zone touch controls.
-- Sprint, jump, crouch and slide.
-- ADS/FOV transition.
-- Automatic fire, ammo, reload animation, recoil and muzzle flash.
-- Physical-style pooled shell-casing prototype.
-- Target dummies with head/body damage, hit marker, death and respawn.
-- FPS diagnostics.
-- PWA shell/service worker.
-- Three-layer audio architecture with multi-ZIP local import.
-- Weapon definitions mapped to `weapons_player` and `dlc_weapons` banks.
+### Stage 1 — Playable FPS Foundation — COMPLETE
 
-## Audio layers
+Movement, touch/mouse look, sprint, crouch, slide, jump, ADS, automatic fire, reload, ammo, recoil, muzzle flash, shell casings, target damage/headshots, respawn, Killhouse blockout, PWA shell and local three-layer audio import are implemented.
+
+### Stage 2 — Production Systems — ACTIVE
+
+The repository now contains:
+
+- Three.js production renderer and iPhone-aware rendering path.
+- Rapier WASM physics runtime.
+- GLB/glTF asset loader with Draco, Meshopt and KTX2 support.
+- PBR material/weathering system for dirt, rust and wetness.
+- Geometry LOD and distance-based animation update system.
+- Weapon GLB socket runtime.
+- Humanoid character/animation runtime.
+- Chunked map loader and streaming foundation.
+- Seeded modular procedural layout generator.
+- WebSocket room relay server, client snapshots and interpolation.
+- Ballistics, penetration and tracer foundation.
+- Red-dot/scope runtime.
+- Grenade physics runtime.
+- Impact/decal pooling.
+- Night-vision post-processing module.
+- Asset Inspector tool for GLB triangle/bone/animation/socket validation.
+- Permanent `resident`, `weapons_player`, `dlc_weapons` audio layout plus ZIP development import.
+
+The game itself includes **BUILD STATUS**, showing Stage 1 complete and Stage 2 active instead of presenting the foundation as a finished game.
+
+## Runtime entry
+
+`index.html` runs `src/main-stage2.js`.
+
+## Asset structure
 
 ```text
-public/game-assets/audio/
-├── weapons_player/
-├── dlc_weapons/
-├── resident/
-└── audio-manifest.json
+public/game-assets/
+├── audio/
+│   ├── weapons_player/
+│   ├── dlc_weapons/
+│   └── resident/
+├── models/
+│   ├── weapons/
+│   └── characters/
+├── animations/
+├── maps/
+├── textures/
+│   └── materials/
+└── manifests/
 ```
 
-The game can currently import multiple converted Project-Strike-Audio ZIPs from the start screen, so private/local audio does not need to be committed to a public repository. The runtime audio manager reads each converter manifest and reconstructs the original bank/layer mapping.
+## Audio status
 
-## Uploaded audio status
+The converted development packs supplied so far contain:
 
-The current conversion set supplied during development contains:
+- `weapons_player`: **22 banks / 122 WAV streams**.
+- `dlc_weapons`: **6 banks / 73 WAV streams**.
+- `resident`: runtime folder ready; converted pack still required.
 
-- `weapons_player`: 22 banks / 122 WAV streams.
-- `dlc_weapons`: 6 banks / 73 WAV streams.
-- `resident`: runtime folder prepared; converted ZIP still needed.
+The start screen can import those ZIPs locally. For permanent hosting, extract each complete `Project-Strike-Audio` directory into its matching top-level layer. See `docs/AUDIO_UPLOAD.md`.
 
 ## Asset targets
 
-Runtime models: GLB/glTF with LOD0-LOD3, Meshopt/Draco where useful.
+Runtime models use GLB/glTF. First-person hero weapons use high-detail LOD0; world weapons and characters use LOD0–LOD3. Runtime texture targets are KTX2/Basis with mipmaps and quality tiers. High-resolution source art can remain 4K/8K/high-poly because runtime derivatives are selected by device and distance.
 
-Runtime textures: KTX2/Basis with quality tiers and mipmaps.
+`public/game-assets/manifests/asset-catalog.json` contains the current model, animation and CC0 PBR material acquisition plan.
 
-Source art may remain 4K/8K/high-poly; the runtime receives optimized derivatives chosen by device quality and distance.
+## Internal tools
 
-See `docs/ARCHITECTURE.md` for the full production contract.
+`/tools/asset-viewer/` opens local GLB/glTF files and reports triangle count, materials, bones, animations and required Project Strike weapon sockets.
+
+## Multiplayer
+
+`server/` contains the first room relay service. GitHub Pages hosts only the game client; the relay/server must be deployed separately. The client already has snapshot interpolation infrastructure. The online stage adds authoritative hit simulation, prediction/reconciliation and lag compensation.
+
+## Controls
+
+Desktop: WASD, mouse, Shift sprint, Space jump, C/Ctrl crouch/slide, R reload, LMB fire, RMB ADS.
+
+Mobile: left movement pad, right-side free look, Fire, ADS, Reload, Jump and Slide/Crouch.
+
+See `docs/ARCHITECTURE.md` for the complete production contract and roadmap.
