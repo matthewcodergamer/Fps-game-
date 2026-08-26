@@ -3,34 +3,38 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
-  <meta name="theme-color" content="#07090d" />
+  <meta name="theme-color" content="#05070a" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="styles.css" />
   <title>Project Strike</title>
+  <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script>
 </head>
 <body>
   <div id="app">
     <canvas id="game"></canvas>
 
     <div id="boot" class="panel boot">
-      <div class="eyebrow">PROJECT STRIKE</div>
-      <h1>TACTICAL FPS PROTOTYPE</h1>
-      <p>Mobile-first Three.js FPS foundation with desktop controls, touch look, sprint, crouch, slide, recoil, casings, targets and a three-layer local audio system.</p>
+      <div class="brandRow"><div class="strikeMark">PS</div><div><div class="eyebrow">PROJECT STRIKE</div><div class="buildTag">STAGE 2 · PRODUCTION SYSTEMS</div></div></div>
+      <h1>TACTICAL FPS</h1>
+      <p class="lead">High-realism browser FPS built for iPhone and desktop. Stage 1 is complete; Stage 2 is integrating production assets, physics, PBR materials, LOD and multiplayer infrastructure.</p>
       <div class="boot-actions">
-        <button id="playBtn" class="primary">PLAY</button>
+        <button id="playBtn" class="primary">DEPLOY</button>
         <label class="secondary fileBtn">IMPORT AUDIO PACKS<input id="audioZip" type="file" accept=".zip,application/zip" multiple /></label>
+        <button id="roadmapBtn" class="secondary">BUILD STATUS</button>
       </div>
-      <div id="audioStatus" class="muted">Audio layers: resident / weapons_player / dlc_weapons · select one, two, or all three converted ZIPs</div>
+      <div id="audioStatus" class="muted">Audio layers: resident / weapons_player / dlc_weapons · select any converted ZIP packs</div>
+      <div class="systems"><span>THREE.JS</span><span>RAPIER WASM</span><span>GLB/KTX2</span><span>LOD</span><span>WEB AUDIO</span><span>MULTIPLAYER</span></div>
     </div>
+
+    <aside id="roadmap" class="roadmap hidden"><div class="roadmapHead"><div><div class="eyebrow">DEVELOPMENT</div><h2>BUILD ROADMAP</h2></div><button id="closeRoadmap">×</button></div><div id="stageList"></div></aside>
 
     <div id="hud" class="hidden">
       <div id="crosshair"><span></span><span></span><span></span><span></span></div>
-      <div class="topbar"><div id="fps">60 FPS</div><div id="statusText">READY</div></div>
+      <div class="topbar"><div id="fps">60 FPS</div><div id="statusText">READY</div><div id="stageBadge">S2</div></div>
       <div class="ammo"><strong id="ammo">30</strong><span>/ 90</span></div>
       <div id="hitmarker">×</div>
-
       <div id="leftPad" class="touchPad"><div class="stick"></div></div>
       <div id="lookZone"></div>
       <div class="buttons">
@@ -42,7 +46,6 @@
       </div>
     </div>
   </div>
-
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script type="module" src="src/main.js"></script>
 </body>
