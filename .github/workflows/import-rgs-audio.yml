@@ -1,0 +1,80 @@
+name: Import authorized RGS audio
+
+on:
+  push:
+    paths:
+      - '.github/workflows/import-rgs-audio.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import-audio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Playwright
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Download authorized RGS 4.1.1 package
+        run: node tools/audio/download-rgs.mjs /tmp/RGS_v411_modland.zip
+
+      - name: Locate and unpack Sounds Only OIV
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/rgs_outer /tmp/rgs_oiv
+          mkdir -p /tmp/rgs_outer /tmp/rgs_oiv
+          unzip -q /tmp/RGS_v411_modland.zip -d /tmp/rgs_outer
+          OIV="$(find /tmp/rgs_outer -type f -iname '*SOUNDS*ONLY*.oiv' | head -n 1)"
+          if [ -z "$OIV" ]; then
+            echo 'Sounds Only OIV not found. Files:'
+            find /tmp/rgs_outer -maxdepth 5 -type f | head -n 200
+            exit 1
+          fi
+          echo "Using $OIV"
+          unzip -q "$OIV" -d /tmp/rgs_oiv
+          find /tmp/rgs_oiv -maxdepth 4 -type f | head -n 100
+
+      - name: Convert all AWC layers to WAV
+        shell: bash
+        run: |
+          set -euxo pipefail
+          CONTENT="$(find /tmp/rgs_oiv -type d -name content | head -n 1)"
+          test -n "$CONTENT"
+          rm -rf public/game-assets/audio/weapons_player public/game-assets/audio/dlc_weapons public/game-assets/audio/resident
+          mkdir -p public/game-assets/audio/weapons_player public/game-assets/audio/dlc_weapons public/game-assets/audio/resident
+          node tools/audio/convert-awc.mjs "$CONTENT" public/game-assets/audio
+          echo 'WAV totals:'
+          find public/game-assets/audio -type f -iname '*.wav' | wc -l
+          for layer in weapons_player dlc_weapons resident; do
+            printf '%s: ' "$layer"
+            find "public/game-assets/audio/$layer" -type f -iname '*.wav' | wc -l
+          done
+
+      - name: Commit extracted WAV banks
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name 'Project Strike Asset Pipeline'
+          git config user.email 'actions@users.noreply.github.com'
+          git add public/game-assets/audio
+          if git diff --cached --quiet; then
+            echo 'No audio changes to commit.'
+            exit 0
+          fi
+          git commit -m 'Stage 2: import authorized three-layer RGS WAV banks'
+          git push origin HEAD:main
