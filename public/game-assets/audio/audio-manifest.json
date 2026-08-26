@@ -1,0 +1,18 @@
+{
+  "format": "project-strike-audio-v2",
+  "layers": {
+    "weapons_player": {
+      "root": "./game-assets/audio/weapons_player/",
+      "banks": []
+    },
+    "dlc_weapons": {
+      "root": "./game-assets/audio/dlc_weapons/",
+      "banks": []
+    },
+    "resident": {
+      "root": "./game-assets/audio/resident/",
+      "banks": []
+    }
+  },
+  "note": "Runtime manifest placeholder. The local ZIP importer can populate audio at runtime until cleared audio is committed to a private asset repository."
+}
