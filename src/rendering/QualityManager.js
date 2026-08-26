@@ -1,11 +1,5 @@
 export class QualityManager{
-  constructor(renderer,{targetFps=60,minScale=.65,maxScale=1}={}){this.renderer=renderer;this.targetFps=targetFps;this.minScale=minScale;this.maxScale=maxScale;this.scale=maxScale;this.acc=0;this.frames=0;this.last=performance.now();this.cooldown=0}
-  update(dt){this.acc+=dt;this.frames++;this.cooldown=Math.max(0,this.cooldown-dt);const now=performance.now();if(now-this.last<1000||this.cooldown>0)return this.scale;const fps=this.frames/this.acc;this.frames=0;this.acc=0;this.last=now;const old=this.scale;if(fps<this.targetFps-7)this.scale=Math.max(this.minScale,this.scale-.08);else if(fps>this.targetFps-1)this.scale=Math.min(this.maxScale,this.scale+.04);if(Math.abs(old-this.scale)>.001){this.renderer.setPixelRatio(Math.min(devicePixelRatio,devicePixelRatio*this.scale));this.renderer.setSize(innerWidth,innerHeight,false);this.cooldown=1.5}return this.scale}
+  constructor(renderer,{targetFps=60,minScale=.65,maxScale=1}={}){this.renderer=renderer;this.targetFps=targetFps;this.minScale=minScale;this.maxScale=maxScale;this.scale=maxScale;this.basePixelRatio=renderer.getPixelRatio();this.acc=0;this.frames=0;this.last=performance.now();this.cooldown=0}
+  update(dt){this.acc+=dt;this.frames++;this.cooldown=Math.max(0,this.cooldown-dt);const now=performance.now();if(now-this.last<1000||this.cooldown>0)return this.scale;const fps=this.frames/this.acc;this.frames=0;this.acc=0;this.last=now;const old=this.scale;if(fps<this.targetFps-7)this.scale=Math.max(this.minScale,this.scale-.08);else if(fps>this.targetFps-1)this.scale=Math.min(this.maxScale,this.scale+.04);if(Math.abs(old-this.scale)>.001){this.renderer.setPixelRatio(this.basePixelRatio*this.scale);this.renderer.setSize(innerWidth,innerHeight,false);this.cooldown=1.5}return this.scale}
 }
-
-export function detectDevicePreset(){
-  const coarse=matchMedia('(pointer:coarse)').matches,mem=navigator.deviceMemory||4,cores=navigator.hardwareConcurrency||4;
-  if(coarse&&(mem<=4||cores<=4))return{preset:'mobile-balanced',targetFps:60,shadowMap:1024,maxRagdolls:2,maxDecals:90,maxParticles:160,resolution:[.65,1]};
-  if(coarse)return{preset:'mobile-high',targetFps:60,shadowMap:1536,maxRagdolls:3,maxDecals:130,maxParticles:220,resolution:[.7,1]};
-  return{preset:'desktop-high',targetFps:60,shadowMap:2048,maxRagdolls:8,maxDecals:250,maxParticles:500,resolution:[.75,1]};
-}
+export function detectDevicePreset(){const coarse=matchMedia('(pointer:coarse)').matches,mem=navigator.deviceMemory||4,cores=navigator.hardwareConcurrency||4;if(coarse&&(mem<=4||cores<=4))return{preset:'mobile-balanced',targetFps:60,shadowMap:1024,maxRagdolls:2,maxDecals:90,maxParticles:160,resolution:[.65,1]};if(coarse)return{preset:'mobile-high',targetFps:60,shadowMap:1536,maxRagdolls:3,maxDecals:130,maxParticles:220,resolution:[.7,1]};return{preset:'desktop-high',targetFps:60,shadowMap:2048,maxRagdolls:8,maxDecals:250,maxParticles:500,resolution:[.75,1]}}
