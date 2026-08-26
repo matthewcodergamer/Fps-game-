@@ -1,0 +1,90 @@
+name: Extract Project Strike Audio
+
+on:
+  push:
+    paths:
+      - 'audio-source/*.zip'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  extract-audio:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract WAV banks into runtime layers
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile, json, shutil
+
+          src = Path('audio-source')
+          root = Path('public/game-assets/audio')
+          layers = ('weapons_player','dlc_weapons','resident')
+          for layer in layers:
+              (root/layer).mkdir(parents=True, exist_ok=True)
+
+          combined = {'format':'project-strike-audio-v3','layers':{k:{'banks':[]} for k in layers}}
+
+          # Rebuild only banks represented by source ZIPs; preserve empty resident if not supplied.
+          for zp in sorted(src.glob('*.zip')):
+              with zipfile.ZipFile(zp) as z:
+                  names = z.namelist()
+                  manifest_name = next((n for n in names if n.endswith('manifest/audio-manifest.json')), None)
+                  manifest = json.loads(z.read(manifest_name)) if manifest_name else {'banks':[]}
+                  bank_meta = {b.get('id',''): b for b in manifest.get('banks',[])}
+
+                  for n in names:
+                      if not n.lower().endswith('.wav'):
+                          continue
+                      parts = Path(n).parts
+                      try:
+                          i = parts.index('audio')
+                          encoded_bank = parts[i+1]
+                      except (ValueError, IndexError):
+                          continue
+
+                      layer = next((x for x in layers if encoded_bank.startswith(x + '_')), None)
+                      if not layer:
+                          continue
+                      bank = encoded_bank[len(layer)+1:]
+                      out_dir = root/layer/bank
+                      out_dir.mkdir(parents=True, exist_ok=True)
+                      out = out_dir/Path(n).name
+                      with z.open(n) as r, open(out,'wb') as w:
+                          shutil.copyfileobj(r,w)
+
+                  for b in manifest.get('banks',[]):
+                      bid = b.get('id','')
+                      layer = next((x for x in layers if bid.startswith(x + '_')), None)
+                      if not layer:
+                          continue
+                      bank = bid[len(layer)+1:]
+                      combined['layers'][layer]['banks'].append({
+                          'id': bank,
+                          'sourceId': bid,
+                          'streamCount': len(b.get('streams',[])),
+                          'root': f'./{layer}/{bank}/'
+                      })
+
+          (root/'audio-manifest.json').write_text(json.dumps(combined, indent=2) + '\n')
+          PY
+
+      - name: Commit extracted WAVs
+        shell: bash
+        run: |
+          git config user.name 'Project Strike Audio Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add public/game-assets/audio
+          if git diff --cached --quiet; then
+            echo 'No audio changes to commit.'
+            exit 0
+          fi
+          git commit -m 'Extract WAV audio banks into runtime layers'
+          git push
