@@ -1,0 +1,44 @@
+{
+  "version": 2,
+  "stage": 2,
+  "models": {
+    "fps_rifle_01": {
+      "role": "first-person hero rifle",
+      "runtime": "./game-assets/models/weapons/fps_rifle_01/fps_rifle_01.glb",
+      "lod": ["lod0"],
+      "requiredSockets": ["MuzzleSocket","EjectionSocket","MagazineSocket","OpticSocket","MuzzleAttachmentSocket","UnderbarrelSocket","LeftHandSocket","RightHandSocket"],
+      "status": "awaiting-production-asset",
+      "prototypeSource": "https://quaternius.com/packs/ultimategun.html",
+      "prototypeLicense": "CC0"
+    },
+    "world_rifle_01": {
+      "role": "third-person rifle",
+      "runtimeRoot": "./game-assets/models/weapons/world_rifle_01/",
+      "lod": ["lod0.glb","lod1.glb","lod2.glb","lod3.glb"],
+      "status": "awaiting-production-asset"
+    },
+    "soldier_01": {
+      "role": "third-person humanoid",
+      "runtimeRoot": "./game-assets/models/characters/soldier_01/",
+      "lod": ["lod0.glb","lod1.glb","lod2.glb","lod3.glb"],
+      "animationRig": "humanoid",
+      "status": "awaiting-production-asset",
+      "prototypeSource": "https://quaternius.com/packs/universalbasecharacters.html",
+      "prototypeLicense": "CC0"
+    }
+  },
+  "animations": {
+    "humanoid": {
+      "source": "https://quaternius.com/packs/universalanimationlibrary.html",
+      "license": "CC0",
+      "required": ["idle","walk_forward","walk_backward","strafe_left","strafe_right","run","sprint","crouch","slide","jump","reload_rifle","fire_rifle","reload_pistol","fire_pistol","hit","death"]
+    }
+  },
+  "materials": {
+    "rusty_metal": {"source":"https://polyhaven.com/a/rusty_metal","license":"CC0","runtimeRoot":"./game-assets/textures/materials/rusty_metal/"},
+    "rusty_painted_metal": {"source":"https://polyhaven.com/a/rusty_painted_metal","license":"CC0","runtimeRoot":"./game-assets/textures/materials/rusty_painted_metal/"},
+    "concrete": {"source":"https://polyhaven.com/a/concrete","license":"CC0","runtimeRoot":"./game-assets/textures/materials/concrete/"},
+    "rough_concrete": {"source":"https://polyhaven.com/a/rough_concrete","license":"CC0","runtimeRoot":"./game-assets/textures/materials/rough_concrete/"},
+    "metal_plate": {"source":"https://polyhaven.com/a/metal_plate","license":"CC0","runtimeRoot":"./game-assets/textures/materials/metal_plate/"}
+  }
+}
