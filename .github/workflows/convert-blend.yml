@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'assets-source/imports/**'
+      - 'assets-source/imports/**/asset.json'
       - 'assets-source/blend/**.blend'
       - 'tools/blender/export_glb.py'
 
@@ -19,10 +19,6 @@ jobs:
   convert:
     runs-on: ubuntu-latest
     steps:
-      - name: Let package uploads settle
-        if: github.event_name == 'push'
-        run: sleep 12
-
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -38,7 +34,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y blender
 
-      - name: Convert Blender packages
+      - name: Convert completed Blender packages
         shell: bash
         run: |
           set -euo pipefail
@@ -93,7 +89,6 @@ print('Validated:', out, data['meshCount'], 'meshes,', data['materialCount'], 'm
 PY
           }
 
-          # Package-aware layout produced by the Project Strike Asset Uploader.
           while IFS= read -r -d '' manifest; do
             package_root="$(dirname "$manifest")"
             mapfile -d '' blends < <(find "$package_root/raw" -type f -name '*.blend' -print0 2>/dev/null || true)
@@ -107,7 +102,6 @@ PY
             done
           done < <(find assets-source/imports -type f -name 'asset.json' -print0 2>/dev/null || true)
 
-          # Legacy layout remains supported.
           while IFS= read -r -d '' src; do
             rel="${src#assets-source/blend/}"
             out="public/game-assets/imported/blend/${rel%.blend}.glb"
@@ -125,6 +119,6 @@ PY
             echo 'No converted asset changes.'
             exit 0
           fi
-          git commit -m 'Convert Blender asset packages to validated GLB'
+          git commit -m 'Convert completed Blender packages to validated GLB'
           git pull --rebase origin main
           git push origin main
