@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "skeletonStandard": {
+    "root": "Hips",
+    "required": ["Hips","Spine","Chest","Neck","Head","UpperArm_L","LowerArm_L","Hand_L","UpperArm_R","LowerArm_R","Hand_R","UpperLeg_L","LowerLeg_L","Foot_L","UpperLeg_R","LowerLeg_R","Foot_R"],
+    "recommendedFingerBones": true
+  },
+  "characters": [
+    {
+      "id": "operator_male_01",
+      "model": "/game-assets/models/characters/operators/operator_male_01/operator.glb",
+      "lods": [],
+      "animationSet": "operator_standard",
+      "equipment": [],
+      "status": "awaiting_asset"
+    },
+    {
+      "id": "fps_arms_male_01",
+      "model": "/game-assets/models/characters/first_person_arms/fps_arms_male_01/arms.glb",
+      "animationSet": "fps_rifle_standard",
+      "requirements": ["finger_bones", "left_hand", "right_hand", "forearms", "clean_skin_weights"],
+      "status": "awaiting_asset"
+    }
+  ]
+}
