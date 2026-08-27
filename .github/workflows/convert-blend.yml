@@ -1,0 +1,53 @@
+name: Convert Blender assets to GLB
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'assets-source/blend/**.blend'
+      - 'tools/blender/export_glb.py'
+
+permissions:
+  contents: write
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Blender
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y blender
+
+      - name: Convert changed Blender assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p public/game-assets/imported/blend
+          mapfile -t files < <(find assets-source/blend -type f -name '*.blend' 2>/dev/null || true)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo 'No .blend files found.'
+            exit 0
+          fi
+          for src in "${files[@]}"; do
+            rel="${src#assets-source/blend/}"
+            out="public/game-assets/imported/blend/${rel%.blend}.glb"
+            mkdir -p "$(dirname "$out")"
+            blender -b "$src" -P tools/blender/export_glb.py -- "$src" "$out"
+          done
+
+      - name: Commit converted runtime assets
+        run: |
+          git config user.name 'project-strike-asset-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add public/game-assets/imported/blend
+          if git diff --cached --quiet; then
+            echo 'No converted asset changes.'
+            exit 0
+          fi
+          git commit -m 'Convert Blender source assets to GLB'
+          git push
