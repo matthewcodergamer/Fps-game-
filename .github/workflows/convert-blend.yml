@@ -11,13 +11,27 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: project-strike-blender-conversion
+  cancel-in-progress: true
+
 jobs:
   convert:
     runs-on: ubuntu-latest
     steps:
+      - name: Let package uploads settle
+        if: github.event_name == 'push'
+        run: sleep 12
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: main
+
+      - name: Refresh latest package state
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
 
       - name: Install Blender
         run: |
@@ -60,26 +74,46 @@ PY
             fi
 
             out="public/game-assets/${category}/${asset_name}.glb"
-            mkdir -p "$(dirname "$out")"
+            report="public/game-assets/manifests/conversion-reports/${asset_name}.json"
+            mkdir -p "$(dirname "$out")" "$(dirname "$report")"
             echo "Converting $src -> $out"
-            blender -b "$src" -P tools/blender/export_glb.py -- "$src" "$out"
+            blender -b "$src" -P tools/blender/export_glb.py -- "$src" "$out" "$report"
+
+            test -s "$out"
+            python3 - "$out" "$report" <<'PY'
+import json, os, sys
+out, report = sys.argv[1:]
+with open(out,'rb') as f:
+    assert f.read(4) == b'glTF', 'invalid GLB header'
+data=json.load(open(report,encoding='utf-8'))
+assert data['assertions']['hasMeshes']
+assert data['assertions']['validGlbHeader']
+assert data['outputBytes'] == os.path.getsize(out)
+print('Validated:', out, data['meshCount'], 'meshes,', data['materialCount'], 'materials,', data['packageImagesFound'], 'package images')
+PY
           }
 
-          # New package-aware layout. Keeping raw package structure intact lets
-          # Blender resolve relative texture/image paths from the original asset.
-          while IFS= read -r -d '' src; do
-            raw_dir="${src%%/raw/*}/raw"
-            package_root="${raw_dir%/raw}"
-            fallback="$(basename "${src%.blend}")"
-            convert_one "$src" "$package_root" "$fallback"
-          done < <(find assets-source/imports -type f -name '*.blend' -print0 2>/dev/null || true)
+          # Package-aware layout produced by the Project Strike Asset Uploader.
+          while IFS= read -r -d '' manifest; do
+            package_root="$(dirname "$manifest")"
+            mapfile -d '' blends < <(find "$package_root/raw" -type f -name '*.blend' -print0 2>/dev/null || true)
+            if [ "${#blends[@]}" -eq 0 ]; then
+              echo "No .blend found in $package_root/raw; skipping package"
+              continue
+            fi
+            for src in "${blends[@]}"; do
+              fallback="$(basename "${src%.blend}")"
+              convert_one "$src" "$package_root" "$fallback"
+            done
+          done < <(find assets-source/imports -type f -name 'asset.json' -print0 2>/dev/null || true)
 
           # Legacy layout remains supported.
           while IFS= read -r -d '' src; do
             rel="${src#assets-source/blend/}"
             out="public/game-assets/imported/blend/${rel%.blend}.glb"
-            mkdir -p "$(dirname "$out")"
-            blender -b "$src" -P tools/blender/export_glb.py -- "$src" "$out"
+            report="public/game-assets/manifests/conversion-reports/legacy_$(basename "${src%.blend}").json"
+            mkdir -p "$(dirname "$out")" "$(dirname "$report")"
+            blender -b "$src" -P tools/blender/export_glb.py -- "$src" "$out" "$report"
           done < <(find assets-source/blend -type f -name '*.blend' -print0 2>/dev/null || true)
 
       - name: Commit converted runtime assets
@@ -91,5 +125,6 @@ PY
             echo 'No converted asset changes.'
             exit 0
           fi
-          git commit -m 'Convert Blender asset packages to GLB'
-          git push
+          git commit -m 'Convert Blender asset packages to validated GLB'
+          git pull --rebase origin main
+          git push origin main
