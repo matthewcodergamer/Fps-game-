@@ -1,9 +1,10 @@
-name: Convert Blender assets to GLB
+name: Convert Blender asset packages to GLB
 
 on:
   workflow_dispatch:
   push:
     paths:
+      - 'assets-source/imports/**'
       - 'assets-source/blend/**.blend'
       - 'tools/blender/export_glb.py'
 
@@ -23,31 +24,72 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y blender
 
-      - name: Convert changed Blender assets
+      - name: Convert Blender packages
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p public/game-assets/imported/blend
-          mapfile -t files < <(find assets-source/blend -type f -name '*.blend' 2>/dev/null || true)
-          if [ ${#files[@]} -eq 0 ]; then
-            echo 'No .blend files found.'
-            exit 0
-          fi
-          for src in "${files[@]}"; do
+          shopt -s nullglob
+
+          convert_one() {
+            src="$1"
+            package_root="$2"
+            fallback_name="$3"
+            category="models/props"
+            asset_name="$fallback_name"
+
+            if [ -f "$package_root/asset.json" ]; then
+              category=$(python3 - "$package_root/asset.json" <<'PY'
+import json,sys
+try:
+    data=json.load(open(sys.argv[1],encoding='utf-8'))
+    print(data.get('category') or 'models/props')
+except Exception:
+    print('models/props')
+PY
+)
+              asset_name=$(python3 - "$package_root/asset.json" <<'PY'
+import json,sys,re
+try:
+    data=json.load(open(sys.argv[1],encoding='utf-8'))
+    name=data.get('runtimeName') or data.get('name') or 'asset'
+except Exception:
+    name='asset'
+print(re.sub(r'[^A-Za-z0-9._-]+','_',name).strip('_') or 'asset')
+PY
+)
+            fi
+
+            out="public/game-assets/${category}/${asset_name}.glb"
+            mkdir -p "$(dirname "$out")"
+            echo "Converting $src -> $out"
+            blender -b "$src" -P tools/blender/export_glb.py -- "$src" "$out"
+          }
+
+          # New package-aware layout. Keeping raw package structure intact lets
+          # Blender resolve relative texture/image paths from the original asset.
+          while IFS= read -r -d '' src; do
+            raw_dir="${src%%/raw/*}/raw"
+            package_root="${raw_dir%/raw}"
+            fallback="$(basename "${src%.blend}")"
+            convert_one "$src" "$package_root" "$fallback"
+          done < <(find assets-source/imports -type f -name '*.blend' -print0 2>/dev/null || true)
+
+          # Legacy layout remains supported.
+          while IFS= read -r -d '' src; do
             rel="${src#assets-source/blend/}"
             out="public/game-assets/imported/blend/${rel%.blend}.glb"
             mkdir -p "$(dirname "$out")"
             blender -b "$src" -P tools/blender/export_glb.py -- "$src" "$out"
-          done
+          done < <(find assets-source/blend -type f -name '*.blend' -print0 2>/dev/null || true)
 
       - name: Commit converted runtime assets
         run: |
           git config user.name 'project-strike-asset-bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add public/game-assets/imported/blend
+          git add public/game-assets
           if git diff --cached --quiet; then
             echo 'No converted asset changes.'
             exit 0
           fi
-          git commit -m 'Convert Blender source assets to GLB'
+          git commit -m 'Convert Blender asset packages to GLB'
           git push
