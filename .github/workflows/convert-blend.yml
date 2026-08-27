@@ -1,4 +1,4 @@
-name: Convert Blender asset packages to GLB
+name: Convert Project Strike source packages to GLB
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: project-strike-blender-conversion
+  group: project-strike-model-conversion
   cancel-in-progress: true
 
 jobs:
@@ -34,11 +34,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y blender
 
-      - name: Convert completed Blender packages
+      - name: Convert completed source packages
         shell: bash
         run: |
           set -euo pipefail
-          shopt -s nullglob
+          shopt -s nullglob nocaseglob
 
           convert_one() {
             src="$1"
@@ -73,7 +73,7 @@ PY
             report="public/game-assets/manifests/conversion-reports/${asset_name}.json"
             mkdir -p "$(dirname "$out")" "$(dirname "$report")"
             echo "Converting $src -> $out"
-            blender -b "$src" -P tools/blender/export_glb.py -- "$src" "$out" "$report"
+            blender -b -P tools/blender/export_glb.py -- "$src" "$out" "$report"
 
             test -s "$out"
             python3 - "$out" "$report" <<'PY'
@@ -85,21 +85,59 @@ data=json.load(open(report,encoding='utf-8'))
 assert data['assertions']['hasMeshes']
 assert data['assertions']['validGlbHeader']
 assert data['outputBytes'] == os.path.getsize(out)
+if os.path.getsize(out) >= 100 * 1024 * 1024:
+    raise SystemExit(f'Runtime GLB is still too large for GitHub ({os.path.getsize(out)} bytes). Reduce source texture/geometry size.')
 print('Validated:', out, data['meshCount'], 'meshes,', data['materialCount'], 'materials,', data['packageImagesFound'], 'package images')
 PY
           }
 
           while IFS= read -r -d '' manifest; do
             package_root="$(dirname "$manifest")"
-            mapfile -d '' blends < <(find "$package_root/raw" -type f -name '*.blend' -print0 2>/dev/null || true)
-            if [ "${#blends[@]}" -eq 0 ]; then
-              echo "No .blend found in $package_root/raw; skipping package"
+            raw="$package_root/raw"
+            mkdir -p "$raw"
+
+            chunked=$(python3 - "$manifest" <<'PY'
+import json,sys
+try: print('1' if json.load(open(sys.argv[1],encoding='utf-8')).get('chunked') else '0')
+except Exception: print('0')
+PY
+)
+
+            if [ "$chunked" = "1" ]; then
+              source_name=$(python3 - "$manifest" <<'PY'
+import json,sys,os
+try: print(json.load(open(sys.argv[1],encoding='utf-8')).get('sourceName') or 'source.glb')
+except Exception: print('source.glb')
+PY
+)
+              assembled="$raw/$source_name"
+              python3 - "$package_root/chunks" "$assembled" <<'PY'
+from pathlib import Path
+import sys
+chunks=Path(sys.argv[1]); out=Path(sys.argv[2]); out.parent.mkdir(parents=True,exist_ok=True)
+parts=sorted(chunks.glob('part-*.bin'))
+if not parts: raise SystemExit('Chunked package has no part files')
+with out.open('wb') as w:
+    for p in parts:
+        with p.open('rb') as r:
+            while True:
+                b=r.read(1024*1024)
+                if not b: break
+                w.write(b)
+print('Reassembled', len(parts), 'chunks ->', out, out.stat().st_size, 'bytes')
+PY
+            fi
+
+            mapfile -d '' sources < <(find "$raw" -type f \( -iname '*.blend' -o -iname '*.fbx' -o -iname '*.gltf' -o -iname '*.glb' \) -print0 2>/dev/null || true)
+            if [ "${#sources[@]}" -eq 0 ]; then
+              echo "No convertible source found in $raw; skipping package"
               continue
             fi
-            for src in "${blends[@]}"; do
-              fallback="$(basename "${src%.blend}")"
-              convert_one "$src" "$package_root" "$fallback"
-            done
+
+            src="${sources[0]}"
+            fallback="$(basename "$src")"
+            fallback="${fallback%.*}"
+            convert_one "$src" "$package_root" "$fallback"
           done < <(find assets-source/imports -type f -name 'asset.json' -print0 2>/dev/null || true)
 
           while IFS= read -r -d '' src; do
@@ -107,7 +145,7 @@ PY
             out="public/game-assets/imported/blend/${rel%.blend}.glb"
             report="public/game-assets/manifests/conversion-reports/legacy_$(basename "${src%.blend}").json"
             mkdir -p "$(dirname "$out")" "$(dirname "$report")"
-            blender -b "$src" -P tools/blender/export_glb.py -- "$src" "$out" "$report"
+            blender -b -P tools/blender/export_glb.py -- "$src" "$out" "$report"
           done < <(find assets-source/blend -type f -name '*.blend' -print0 2>/dev/null || true)
 
       - name: Commit converted runtime assets
@@ -119,6 +157,6 @@ PY
             echo 'No converted asset changes.'
             exit 0
           fi
-          git commit -m 'Convert completed Blender packages to validated GLB'
+          git commit -m 'Convert queued Project Strike source packages to validated GLB'
           git pull --rebase origin main
           git push origin main
