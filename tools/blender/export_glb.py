@@ -2,14 +2,13 @@ import bpy
 import json
 import os
 import re
-import struct
 import sys
 from pathlib import Path
 
 argv = sys.argv
 argv = argv[argv.index('--') + 1:] if '--' in argv else []
 if len(argv) < 2:
-    raise SystemExit('usage: blender -b source.blend -P export_glb.py -- source.blend output.glb [report.json]')
+    raise SystemExit('usage: blender -b -P export_glb.py -- source.(blend|fbx|gltf|glb) output.glb [report.json]')
 
 source = os.path.abspath(argv[0])
 output = os.path.abspath(argv[1])
@@ -46,6 +45,24 @@ def discover_images(root):
         if p.is_file() and p.suffix.lower() in IMAGE_EXTS:
             out.append(p)
     return out
+
+
+def reset_scene():
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+
+
+def import_source(path):
+    ext = Path(path).suffix.lower()
+    if ext == '.blend':
+        bpy.ops.wm.open_mainfile(filepath=path)
+    elif ext == '.fbx':
+        reset_scene()
+        bpy.ops.import_scene.fbx(filepath=path, use_image_search=True)
+    elif ext in {'.gltf', '.glb'}:
+        reset_scene()
+        bpy.ops.import_scene.gltf(filepath=path)
+    else:
+        raise SystemExit(f'Project Strike assertion failed: unsupported source format {ext}')
 
 
 def relink_images(candidates):
@@ -153,19 +170,42 @@ def auto_wire_materials(candidates):
     return wired
 
 
+def downscale_runtime_images(max_side=2048):
+    changed = []
+    for image in bpy.data.images:
+        try:
+            w, h = int(image.size[0]), int(image.size[1])
+        except Exception:
+            continue
+        if w <= 0 or h <= 0 or max(w, h) <= max_side:
+            continue
+        scale = max_side / float(max(w, h))
+        nw, nh = max(1, int(round(w * scale))), max(1, int(round(h * scale)))
+        try:
+            image.scale(nw, nh)
+            changed.append({'image': image.name, 'from': [w, h], 'to': [nw, nh]})
+        except Exception:
+            pass
+    return changed
+
+
+if not os.path.exists(source):
+    raise SystemExit(f'Project Strike assertion failed: source not found: {source}')
+
+import_source(source)
 candidates = discover_images(package_root)
 relinked, missing_images = relink_images(candidates)
 auto_wired = auto_wire_materials(candidates)
+resized_images = downscale_runtime_images(2048)
 
 mesh_count = len([o for o in bpy.context.scene.objects if o.type == 'MESH'])
 armature_count = len([o for o in bpy.context.scene.objects if o.type == 'ARMATURE'])
 material_count = len(bpy.data.materials)
 action_count = len(bpy.data.actions)
 if mesh_count == 0:
-    raise SystemExit('Project Strike assertion failed: Blender source contains no mesh objects')
+    raise SystemExit('Project Strike assertion failed: source contains no mesh objects')
 
-# GLB embeds exported image payloads, keeping runtime loading self-contained.
-bpy.ops.export_scene.gltf(
+export_args = dict(
     filepath=output,
     export_format='GLB',
     use_selection=False,
@@ -178,6 +218,14 @@ bpy.ops.export_scene.gltf(
     export_cameras=False,
     export_lights=False,
 )
+try:
+    export_args['export_draco_mesh_compression_enable'] = True
+    export_args['export_draco_mesh_compression_level'] = 6
+    bpy.ops.export_scene.gltf(**export_args)
+except Exception:
+    export_args.pop('export_draco_mesh_compression_enable', None)
+    export_args.pop('export_draco_mesh_compression_level', None)
+    bpy.ops.export_scene.gltf(**export_args)
 
 if not os.path.exists(output) or os.path.getsize(output) < 1024:
     raise SystemExit('Project Strike assertion failed: GLB output was not created or is unexpectedly small')
@@ -187,8 +235,9 @@ if magic != b'glTF':
     raise SystemExit('Project Strike assertion failed: output does not have a valid GLB header')
 
 report = {
-    'version': 2,
+    'version': 3,
     'source': source,
+    'sourceFormat': Path(source).suffix.lower().lstrip('.'),
     'output': output,
     'outputBytes': os.path.getsize(output),
     'meshCount': mesh_count,
@@ -198,6 +247,7 @@ report = {
     'packageImagesFound': len(candidates),
     'relinkedImages': relinked,
     'autoWiredTextures': auto_wired,
+    'runtimeTextureResizes': resized_images,
     'unresolvedImages': missing_images,
     'assertions': {
         'hasMeshes': mesh_count > 0,
