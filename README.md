@@ -1,42 +1,33 @@
 # Project Strike
 
-High-realism, mobile-first tactical FPS for the browser. The project targets iPhone-class hardware and desktop from one Three.js codebase, using LOD, compressed/streamed assets and scalable effects instead of maintaining a separate mobile game.
+High-realism, mobile-first tactical FPS for the browser. The project targets iPhone-class hardware and desktop from one Three.js codebase, using LOD, compressed/streamed assets and scalable effects rather than maintaining a separate mobile game.
 
 ## Build status
 
 ### Stage 1 — Playable FPS Foundation — COMPLETE
 
-Movement, touch/mouse look, sprint, crouch, slide, jump, ADS, automatic fire, reload, ammo, recoil, muzzle flash, shell casings, target damage/headshots, respawn, Killhouse blockout, PWA shell and local three-layer audio import are implemented.
+Movement, touch/mouse look, sprint, crouch, slide, jump, ADS, automatic fire, reload, ammo, recoil, muzzle flash, shell casings, target damage/headshots, respawn, Killhouse blockout, PWA shell and three-layer audio architecture are implemented.
 
 ### Stage 2 — Production Systems — COMPLETE
 
-The repository now contains:
+The repository contains the Three.js production renderer, Rapier physics foundation, scalable quality path, model/asset infrastructure, multiplayer room/snapshot foundations, ballistics, grenades, optics, decals/effects and the permanent `resident`, `weapons_player`, `dlc_weapons` audio architecture.
 
-- Three.js production renderer and iPhone-aware rendering path.
-- Rapier WASM physics foundation.
-- GLB/glTF asset loader with Draco, Meshopt and KTX2 support.
-- PBR material/weathering system for dirt, rust and wetness.
-- Geometry LOD and distance-based animation update systems.
-- Weapon GLB socket runtime and humanoid character/animation contracts.
-- Chunked map loader and seeded modular layout foundation.
-- WebSocket room relay, room client, snapshots and interpolation.
-- Ballistics, penetration and tracer foundations.
-- Red-dot/scope runtime.
-- Grenade physics runtime.
-- Impact/decal pooling.
-- Night-vision rendering module.
-- Device quality manager with dynamic resolution hooks.
-- Asset Inspector for GLB triangle/bone/animation/socket validation.
-- Permanent `resident`, `weapons_player`, `dlc_weapons` audio architecture.
-- Browser and Node AWC/WAV batch tooling.
+### Stage 3 — Production Asset Integration — ACTIVE
 
-Stage 3 is now active and replaces prototype geometry with production first-person weapons, hands, character rigs, IK sockets, reload/bolt/slide animation and optics.
+Stage 3 replaces prototype geometry with realistic hero weapons, masculine first-person arms, rigged operators, high-quality environment assets, real PBR materials, authored/mocap animation plus procedural animation, IK/socket alignment and synchronized weapon audio.
 
-## Runtime entry
+New Stage 3 foundation:
 
-`index.html` runs `src/main-stage2.js` plus `src/runtime-stage2-hooks.js`. Those filenames remain for compatibility even though the project roadmap has advanced to Stage 3.
+- `src/assets/ModelLoader.js` — GLB/glTF loader with Draco, Meshopt and KTX2 support plus runtime inspection.
+- `src/animation/AnimationController.js` — base/upper/additive animation layers and procedural bone overrides.
+- `src/audio/WeaponAudioRouter.js` — named weapon animation events resolve through manifests instead of hard-coded WAV filenames.
+- `public/game-assets/manifests/weapons.json` — weapon model/socket/moving-part/audio contract.
+- `public/game-assets/manifests/characters.json` — operator and first-person-arm skeleton contract.
+- `public/game-assets/manifests/animations.json` — locomotion/combat/FPS animation-set contract.
+- `.github/workflows/convert-blend.yml` + `tools/blender/export_glb.py` — real headless Blender `.blend` → GLB conversion.
+- `docs/ASSET_PIPELINE_V2.md` — production source/runtime pipeline and validation rules.
 
-## Asset structure
+## Runtime asset structure
 
 ```text
 public/game-assets/
@@ -46,62 +37,59 @@ public/game-assets/
 │   └── resident/
 ├── models/
 │   ├── weapons/
-│   └── characters/
+│   │   ├── rifles/
+│   │   ├── pistols/
+│   │   └── attachments/
+│   ├── characters/
+│   │   ├── first_person_arms/
+│   │   └── operators/
+│   └── environment/
 ├── animations/
-├── maps/
-├── textures/
-│   └── materials/
+├── materials/
 └── manifests/
 ```
 
-## Audio deployment
+Editable source assets belong under `assets-source/`; Safari should normally load validated runtime GLB/glTF/KTX2/audio from `public/game-assets/`.
 
-The converted development ZIPs supplied so far contain:
+## Asset-processing tools
 
-- `weapons_player`: **22 banks / 122 WAV streams**.
-- `dlc_weapons`: **6 banks / 73 WAV streams**.
-- `resident`: the runtime layer exists, but a converted resident ZIP is still required for its WAV payload.
+The companion repository `matthewcodergamer/RAGE-Weapon-Audio-Web` now also contains `model-processor.html`.
 
-Use `/tools/audio-deploy.html` from the deployed site to select the converted ZIPs and create one Git commit containing the actual binary WAV files. The deployer preserves the three top-level layers and each AWC bank as a subfolder, then regenerates `public/game-assets/audio/audio-manifest.json`.
+The model processor:
 
-Expected permanent layout:
+- extracts ZIPs locally
+- resolves complete glTF packages
+- previews actual GLB/glTF models
+- parses FBX with Three.js
+- converts successfully parsed FBX scenes to binary GLB with `GLTFExporter`
+- reports mesh/triangle/material/texture/bone/animation counts
+- never fake-converts Blender files
+
+Blender files use the real headless Blender GitHub Action in this repository.
+
+## Animation direction
+
+Project Strike uses a hybrid animation architecture:
 
 ```text
-public/game-assets/audio/
-├── weapons_player/
-│   ├── lmg_combat/
-│   ├── ptl_pistol/
-│   ├── sht_bullpup/
-│   └── ...
-├── dlc_weapons/
-│   ├── ptl_revolver/
-│   ├── ptl_navy_revolver/
-│   └── ...
-├── resident/
-│   ├── weapons/
-│   ├── explosions/
-│   ├── collision/
-│   └── ...
-└── audio-manifest.json
+mocap / authored animation
+        ↓
+Three.js AnimationMixer
+        ↓
+base locomotion + upper-body weapon layer
+        ↓
+additive recoil / reactions
+        ↓
+IK + procedural bone controls
+        ↓
+final pose
 ```
 
-The start screen can also import the same ZIPs locally during development.
+General humanoid locomotion can be retargeted from high-quality mocap. First-person reload/fire/inspect clips stay weapon-specific. Recoil, sway, ADS alignment, slide tilt, camera inertia, aim offsets, hand placement and later foot placement are procedural runtime layers.
 
-## Asset targets
+## Audio synchronization
 
-Runtime models use GLB/glTF. First-person hero weapons use high-detail LOD0; world weapons and characters use LOD0–LOD3. Runtime texture targets are KTX2/Basis with mipmaps and quality tiers. High-resolution source art can remain 4K/8K/high-poly because runtime derivatives are selected by device and distance.
-
-`public/game-assets/manifests/asset-catalog.json` contains the current model, animation and PBR material acquisition plan.
-
-## Internal tools
-
-- `/tools/asset-viewer/` opens local GLB/glTF files and reports triangle count, materials, bones, animations and required Project Strike weapon sockets.
-- `/tools/audio-deploy.html` deploys converted WAV ZIPs into the permanent three-layer GitHub tree in a single commit.
-- `tools/audio/convert-awc.mjs` is the batch AWC-to-WAV converter used by the asset pipeline.
-
-## Multiplayer
-
-`server/` contains the first room relay service. GitHub Pages hosts only the game client; the relay/server must be deployed separately. The client already has room connection, remote snapshots and interpolation infrastructure. Later online work adds authoritative hit simulation, client prediction/reconciliation and lag compensation.
+Audio is not attached to models as random files. Weapon definitions emit named events such as `fire`, `magOut`, `magIn`, `bolt`, `slideRelease`, `chargingHandle`, `pinPull` and `grenadeRelease`. `WeaponAudioRouter` resolves those events to the correct imported audio-bank entries.
 
 ## Controls
 
@@ -109,4 +97,4 @@ Desktop: WASD, mouse, Shift sprint, Space jump, C/Ctrl crouch/slide, R reload, L
 
 Mobile: left movement pad, right-side free look, Fire, ADS, Reload, Jump and Slide/Crouch.
 
-See `docs/ARCHITECTURE.md` and `docs/STAGE_2_COMPLETE.md` for the production contract and completed Stage 2 handoff.
+See `docs/ARCHITECTURE.md`, `docs/STAGE_2_COMPLETE.md`, and `docs/ASSET_PIPELINE_V2.md`.
