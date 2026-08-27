@@ -16,7 +16,7 @@ The repository contains the Three.js production renderer, Rapier physics foundat
 
 Stage 3 replaces prototype geometry with realistic hero weapons, masculine first-person arms, rigged operators, high-quality environment assets, real PBR materials, authored/mocap animation plus procedural animation, IK/socket alignment and synchronized weapon audio.
 
-New Stage 3 foundation:
+Stage 3 foundation:
 
 - `src/assets/ModelLoader.js` — GLB/glTF loader with Draco, Meshopt and KTX2 support plus runtime inspection.
 - `src/animation/AnimationController.js` — base/upper/additive animation layers and procedural bone overrides.
@@ -24,7 +24,7 @@ New Stage 3 foundation:
 - `public/game-assets/manifests/weapons.json` — weapon model/socket/moving-part/audio contract.
 - `public/game-assets/manifests/characters.json` — operator and first-person-arm skeleton contract.
 - `public/game-assets/manifests/animations.json` — locomotion/combat/FPS animation-set contract.
-- `.github/workflows/convert-blend.yml` + `tools/blender/export_glb.py` — real headless Blender `.blend` → GLB conversion.
+- `.github/workflows/convert-blend.yml` + `tools/blender/export_glb.py` — validated headless Blender `.blend` → GLB conversion with texture relinking and conversion reports.
 - `docs/ASSET_PIPELINE_V2.md` — production source/runtime pipeline and validation rules.
 
 ## Runtime asset structure
@@ -47,25 +47,60 @@ public/game-assets/
 ├── animations/
 ├── materials/
 └── manifests/
+    └── conversion-reports/
 ```
 
 Editable source assets belong under `assets-source/`; Safari should normally load validated runtime GLB/glTF/KTX2/audio from `public/game-assets/`.
 
-## Asset-processing tools
+## Project Strike Asset Uploader
 
-The companion repository `matthewcodergamer/RAGE-Weapon-Audio-Web` now also contains `model-processor.html`.
+The dedicated companion repository is `matthewcodergamer/Weapon-model-`.
 
-The model processor:
+GitHub Pages:
 
-- extracts ZIPs locally
-- resolves complete glTF packages
-- previews actual GLB/glTF models
-- parses FBX with Three.js
-- converts successfully parsed FBX scenes to binary GLB with `GLTFExporter`
-- reports mesh/triangle/material/texture/bone/animation counts
-- never fake-converts Blender files
+`https://matthewcodergamer.github.io/Weapon-model-/`
 
-Blender files use the real headless Blender GitHub Action in this repository.
+Current web version: **V12**.
+
+The uploader:
+
+- recursively opens ZIP and folder packages;
+- keeps model files and textures together;
+- classifies models, animations, Blender sources and PBR dependencies;
+- recognizes common Base Color, Normal, Roughness, Metallic, AO, ORM/ARM, Height, Emissive and opacity maps;
+- previews real GLB/glTF/FBX assets in the browser;
+- converts supported FBX scenes to binary GLB;
+- sends `.blend` packages, their original folder structure and an `asset.json` destination manifest to this repository;
+- organizes runtime assets into the correct `public/game-assets/` category.
+
+## Real Blender → GLB pipeline
+
+Three.js does not render `.blend` directly. Blender packages uploaded by the V12 tool are stored as:
+
+```text
+assets-source/imports/<package>/
+├── asset.json
+└── raw/
+    ├── model.blend
+    └── textures/
+```
+
+The GitHub Actions conversion pipeline then:
+
+1. waits briefly for large multi-file package uploads to settle;
+2. refreshes to the newest `main` state;
+3. opens the real `.blend` with headless Blender;
+4. searches the package for image dependencies;
+5. repairs broken image paths by matching texture filenames;
+6. preserves existing Blender material node connections;
+7. connects Base Color, Normal, Roughness and Metallic textures to empty Principled BSDF inputs when a package clearly provides those maps;
+8. preserves hierarchy, skinning, armatures, animation clips and morph targets;
+9. exports a binary GLB to the category defined by `asset.json`;
+10. asserts that meshes exist, the output is non-empty and the file has a valid GLB header;
+11. writes a JSON conversion report under `public/game-assets/manifests/conversion-reports/`;
+12. commits the validated runtime GLB back to `main`.
+
+This keeps the editable Blender source package while giving Safari and Three.js the self-contained runtime GLB they actually need.
 
 ## Animation direction
 
