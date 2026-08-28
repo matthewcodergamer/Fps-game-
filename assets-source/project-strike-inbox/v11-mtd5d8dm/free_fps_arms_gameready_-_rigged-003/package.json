@@ -1,0 +1,13 @@
+{
+  "version": 11,
+  "jobId": "v11-mtd5d8dm",
+  "packageId": "free_fps_arms_gameready_-_rigged-003",
+  "sourceName": "free_fps_arms_gameready_-_rigged.glb",
+  "sourcePath": "free_fps_arms_gameready_-_rigged.glb",
+  "sourceFormat": "glb",
+  "category": "models/characters/first_person_arms",
+  "runtimeName": "free_fps_arms_gameready_-_rigged",
+  "chunkCount": 4,
+  "originalBytes": 14249172,
+  "dependencies": []
+}
