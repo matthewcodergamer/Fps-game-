@@ -1,0 +1,13 @@
+{
+  "version": 11,
+  "jobId": "v11-mtd5d8dm",
+  "packageId": "AKS-006",
+  "sourceName": "AKS.fbx",
+  "sourcePath": "AKS.fbx",
+  "sourceFormat": "fbx",
+  "category": "models/weapons/rifles",
+  "runtimeName": "AKS",
+  "chunkCount": 1,
+  "originalBytes": 1654668,
+  "dependencies": []
+}
