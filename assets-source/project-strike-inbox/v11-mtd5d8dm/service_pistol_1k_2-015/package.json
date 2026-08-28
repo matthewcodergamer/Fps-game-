@@ -1,0 +1,13 @@
+{
+  "version": 11,
+  "jobId": "v11-mtd5d8dm",
+  "packageId": "service_pistol_1k_2-015",
+  "sourceName": "service_pistol_1k 2.fbx",
+  "sourcePath": "service_pistol_1k 2.fbx",
+  "sourceFormat": "fbx",
+  "category": "models/weapons/pistols",
+  "runtimeName": "service_pistol_1k 2",
+  "chunkCount": 1,
+  "originalBytes": 1095644,
+  "dependencies": []
+}
