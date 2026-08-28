@@ -1,0 +1,5 @@
+{
+  "failures": [
+    "FAILED v11-mtd6vbjl/afghanbetter_fbx-001: [Errno 2] No such file or directory: '/home/runner/work/Fps-game-/Fps-game-/public/game-assets/models/props/afghanbetter_fbx.glb'"
+  ]
+}
