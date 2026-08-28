@@ -1,0 +1,13 @@
+{
+  "version": 11,
+  "jobId": "v11-mtd5d8dm",
+  "packageId": "crimson_trace_cts-1550_red_dot_sight-002",
+  "sourceName": "crimson_trace_cts-1550_red_dot_sight.glb",
+  "sourcePath": "crimson_trace_cts-1550_red_dot_sight.glb",
+  "sourceFormat": "glb",
+  "category": "models/weapons/attachments",
+  "runtimeName": "crimson_trace_cts-1550_red_dot_sight",
+  "chunkCount": 4,
+  "originalBytes": 13596584,
+  "dependencies": []
+}
