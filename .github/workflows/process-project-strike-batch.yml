@@ -33,6 +33,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y blender
           npm install --global @gltf-transform/cli
+      - name: Static processor gate
+        run: |
+          python3 -m py_compile tools/blender/process_project_strike_inbox.py tools/blender/export_glb.py
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('tools/blender/process_project_strike_inbox.py').read_text()
+          for needle in ['project-strike-inbox','project-strike-batches','100*1024*1024','gltf-transform','blender']:
+              assert needle in s, needle
+          print('Project Strike processor static assertions PASS')
+          PY
       - name: Process staged assets
         id: process
         continue-on-error: true
@@ -42,7 +52,9 @@ jobs:
         run: |
           git config user.name 'project-strike-asset-bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add -A public/game-assets assets-source/project-strike-inbox assets-source/project-strike-batches
+          git add -A public/game-assets
+          [ ! -e assets-source/project-strike-inbox ] || git add -A assets-source/project-strike-inbox
+          [ ! -e assets-source/project-strike-batches ] || git add -A assets-source/project-strike-batches
           if git diff --cached --quiet; then
             echo 'No asset changes to commit.'
           else
