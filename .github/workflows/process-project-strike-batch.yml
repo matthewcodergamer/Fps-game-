@@ -1,0 +1,57 @@
+name: Process Project Strike asset batches
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'assets-source/project-strike-batches/**/ready.json'
+      - 'tools/blender/process_project_strike_inbox.py'
+      - '.github/workflows/process-project-strike-batch.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: project-strike-batch-conversion
+  cancel-in-progress: false
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+      - name: Refresh latest main
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
+      - name: Install Blender and glTF Transform
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y blender
+          npm install --global @gltf-transform/cli
+      - name: Process staged assets
+        id: process
+        continue-on-error: true
+        run: python3 tools/blender/process_project_strike_inbox.py
+      - name: Commit runtime assets and staging cleanup
+        if: always()
+        run: |
+          git config user.name 'project-strike-asset-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A public/game-assets assets-source/project-strike-inbox assets-source/project-strike-batches
+          if git diff --cached --quiet; then
+            echo 'No asset changes to commit.'
+          else
+            git commit -m 'Process Project Strike asset batch'
+            git pull --rebase origin main
+            git push origin main
+          fi
+      - name: Enforce conversion gate
+        if: steps.process.outcome != 'success'
+        run: |
+          echo 'One or more assets failed conversion or validation. See the job log and public/game-assets/manifests/conversion-reports/last-batch-failures.json.'
+          exit 1
