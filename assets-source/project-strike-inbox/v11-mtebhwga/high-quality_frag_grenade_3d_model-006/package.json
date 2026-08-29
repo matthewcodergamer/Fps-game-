@@ -1,0 +1,13 @@
+{
+  "version": 11,
+  "jobId": "v11-mtebhwga",
+  "packageId": "high-quality_frag_grenade_3d_model-006",
+  "sourceName": "high-quality_frag_grenade_3d_model.glb",
+  "sourcePath": "high-quality_frag_grenade_3d_model.glb",
+  "sourceFormat": "glb",
+  "category": "models/grenades",
+  "runtimeName": "high-quality_frag_grenade_3d_model",
+  "chunkCount": 12,
+  "originalBytes": 47066240,
+  "dependencies": []
+}
