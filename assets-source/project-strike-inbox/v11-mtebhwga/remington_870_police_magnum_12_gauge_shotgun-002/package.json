@@ -1,0 +1,13 @@
+{
+  "version": 11,
+  "jobId": "v11-mtebhwga",
+  "packageId": "remington_870_police_magnum_12_gauge_shotgun-002",
+  "sourceName": "remington_870_police_magnum_12_gauge_shotgun.glb",
+  "sourcePath": "remington_870_police_magnum_12_gauge_shotgun.glb",
+  "sourceFormat": "glb",
+  "category": "models/weapons/shotguns",
+  "runtimeName": "remington_870_police_magnum_12_gauge_shotgun",
+  "chunkCount": 12,
+  "originalBytes": 46691578,
+  "dependencies": []
+}
