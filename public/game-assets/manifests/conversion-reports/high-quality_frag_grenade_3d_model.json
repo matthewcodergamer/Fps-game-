@@ -1,0 +1,13 @@
+{
+  "version": 4,
+  "source": "/home/runner/work/Fps-game-/Fps-game-/assets-source/project-strike-inbox/v11-mtebhwga/high-quality_frag_grenade_3d_model-006/raw/high-quality_frag_grenade_3d_model.glb",
+  "sourceFormat": "glb",
+  "output": "/home/runner/work/Fps-game-/Fps-game-/public/game-assets/models/grenades/high-quality_frag_grenade_3d_model.glb",
+  "inputBytes": 47066240,
+  "assertions": {
+    "reconstructed": true,
+    "belowGitHub100MiB": true,
+    "validGlbHeader": true
+  },
+  "postOptimizationBytes": 1006220
+}

@@ -1,0 +1,13 @@
+{
+  "version": 4,
+  "source": "/home/runner/work/Fps-game-/Fps-game-/assets-source/project-strike-inbox/v11-mtebhwga/free_fps_arms_gameready_-_rigged-005/raw/free_fps_arms_gameready_-_rigged.glb",
+  "sourceFormat": "glb",
+  "output": "/home/runner/work/Fps-game-/Fps-game-/public/game-assets/models/characters/first_person_arms/free_fps_arms_gameready_-_rigged.glb",
+  "inputBytes": 14249172,
+  "assertions": {
+    "reconstructed": true,
+    "belowGitHub100MiB": true,
+    "validGlbHeader": true
+  },
+  "postOptimizationBytes": 2302548
+}

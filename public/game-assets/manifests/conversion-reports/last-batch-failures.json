@@ -1,0 +1,5 @@
+{
+  "failures": [
+    "FAILED v11-mtebhwga/AKS-007: [Errno 2] No such file or directory: '/home/runner/work/Fps-game-/Fps-game-/public/game-assets/models/weapons/rifles/AKS.glb'"
+  ]
+}
