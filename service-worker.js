@@ -1,4 +1,4 @@
-const CACHE='project-strike-shell-v4';
+const CACHE='project-strike-shell-v5-neon-rework';
 const SHELL=['./','./index.html','./styles.css','./manifest.webmanifest'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{
   const cache=await caches.open(CACHE);

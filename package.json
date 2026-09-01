@@ -7,13 +7,17 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "node --check src/main-stage3.js && vite build"
+    "audio:manifest": "node tools/audio/build-runtime-manifest.mjs",
+    "verify:runtime": "node tools/verify-runtime.mjs",
+    "test:browser": "playwright test",
+    "check": "node --check src/main-stage3.js && npm run verify:runtime && vite build"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.20.0",
     "three": "^0.185.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.55.0",
     "vite": "^7.1.3"
   }
 }

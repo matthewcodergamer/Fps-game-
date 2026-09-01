@@ -1,15 +1,158 @@
 import * as THREE from 'three';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
-import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { clone as skeletonClone } from 'three/addons/utils/SkeletonUtils.js';
 
-/** Production asset loader for GLB/glTF + Draco + Meshopt + KTX2. */
+const MODEL_EXT = /\.([a-z0-9]+)(?:[?#].*)?$/i;
+
+function extensionOf(url) {
+  return String(url).match(MODEL_EXT)?.[1]?.toLowerCase() || '';
+}
+
+function cloneMaterial(material, anisotropy) {
+  const next = material.clone();
+  for (const key of ['map', 'emissiveMap']) {
+    if (!next[key]) continue;
+    next[key].colorSpace = THREE.SRGBColorSpace;
+    next[key].anisotropy = anisotropy;
+  }
+  for (const key of ['normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']) {
+    if (next[key]) next[key].anisotropy = anisotropy;
+  }
+  if ('envMapIntensity' in next) next.envMapIntensity = Math.max(.7, next.envMapIntensity || 1);
+  next.needsUpdate = true;
+  return next;
+}
+
+/**
+ * Runtime translation layer for repository models.
+ *
+ * Production assets use GLB, while FBX is supported for source inspection and
+ * development fallbacks. Both paths return the same normalized asset contract.
+ */
 export class AssetManager {
-  constructor(renderer){this.renderer=renderer;this.cache=new Map();this.gltf=new GLTFLoader();this.draco=new DRACOLoader();this.draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/libs/draco/');this.gltf.setDRACOLoader(this.draco);this.gltf.setMeshoptDecoder(MeshoptDecoder);this.ktx2=new KTX2Loader();this.ktx2.setTranscoderPath('https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/libs/basis/');this.ktx2.detectSupport(renderer);this.gltf.setKTX2Loader(this.ktx2)}
-  async loadGLB(url,{clone=false}={}){if(!this.cache.has(url))this.cache.set(url,this.gltf.loadAsync(url));const gltf=await this.cache.get(url);if(!clone)return gltf;return{...gltf,scene:skeletonClone(gltf.scene)}}
-  async loadJSON(url){if(!this.cache.has(url))this.cache.set(url,fetch(url).then(r=>{if(!r.ok)throw new Error(`${r.status} ${url}`);return r.json()}));return this.cache.get(url)}
-  async loadTexture(url){if(this.cache.has(url))return this.cache.get(url);const p=/\.ktx2(?:\?|$)/i.test(url)?this.ktx2.loadAsync(url):new THREE.TextureLoader().loadAsync(url);this.cache.set(url,p);return p}
-  dispose(){this.draco.dispose();this.ktx2.dispose();this.cache.clear()}
+  constructor(renderer, { onProgress = null } = {}) {
+    this.renderer = renderer;
+    this.onProgress = onProgress;
+    this.cache = new Map();
+    this.gltf = new GLTFLoader();
+    this.gltf.setMeshoptDecoder(MeshoptDecoder);
+    this.fbx = new FBXLoader();
+    this.anisotropy = Math.min(8, renderer?.capabilities?.getMaxAnisotropy?.() || 1);
+  }
+
+  async parseModel(url) {
+    const ext = extensionOf(url);
+    this.onProgress?.({ type: 'model', url, state: 'loading' });
+    let asset;
+    if (ext === 'glb' || ext === 'gltf') {
+      const gltf = await this.gltf.loadAsync(url, event => {
+        this.onProgress?.({ type: 'model', url, state: 'loading', loaded: event.loaded, total: event.total || 0 });
+      });
+      asset = { ...gltf, scene: gltf.scene, animations: gltf.animations || [], format: ext };
+    } else if (ext === 'fbx') {
+      const scene = await this.fbx.loadAsync(url, event => {
+        this.onProgress?.({ type: 'model', url, state: 'loading', loaded: event.loaded, total: event.total || 0 });
+      });
+      asset = { scene, animations: scene.animations || [], format: 'fbx', parser: null };
+    } else {
+      throw new Error(`Unsupported model format for ${url}. Expected GLB, glTF, or FBX.`);
+    }
+
+    const report = this.inspect(asset.scene, asset.animations);
+    if (!report.meshes) throw new Error(`Model contains no renderable meshes: ${url}`);
+    this.onProgress?.({ type: 'model', url, state: 'ready', report });
+    return { ...asset, url, report };
+  }
+
+  inspect(root, animations = []) {
+    const materials = new Set();
+    let meshes = 0;
+    let skinnedMeshes = 0;
+    let bones = 0;
+    let triangles = 0;
+    root.traverse(node => {
+      if (node.isBone) bones++;
+      if (!node.isMesh) return;
+      meshes++;
+      if (node.isSkinnedMesh) skinnedMeshes++;
+      const geometry = node.geometry;
+      triangles += geometry?.index ? geometry.index.count / 3 : (geometry?.attributes?.position?.count || 0) / 3;
+      for (const material of (Array.isArray(node.material) ? node.material : [node.material])) {
+        if (material) materials.add(material.uuid);
+      }
+    });
+    const bounds = new THREE.Box3().setFromObject(root);
+    return {
+      meshes,
+      skinnedMeshes,
+      bones,
+      materials: materials.size,
+      animations: animations.length,
+      triangles: Math.round(triangles),
+      bounds: bounds.isEmpty() ? null : {
+        min: bounds.min.toArray(),
+        max: bounds.max.toArray(),
+        size: bounds.getSize(new THREE.Vector3()).toArray()
+      }
+    };
+  }
+
+  prepare(root, { world = false } = {}) {
+    root.traverse(node => {
+      if (!node.isMesh) return;
+      node.frustumCulled = world;
+      node.castShadow = world;
+      node.receiveShadow = world;
+      if (Array.isArray(node.material)) node.material = node.material.map(m => cloneMaterial(m, this.anisotropy));
+      else if (node.material) node.material = cloneMaterial(node.material, this.anisotropy);
+    });
+    return root;
+  }
+
+  async loadModel(url, { clone = false, world = false } = {}) {
+    if (!this.cache.has(url)) {
+      const pending = this.parseModel(url).catch(error => {
+        this.cache.delete(url);
+        this.onProgress?.({ type: 'model', url, state: 'error', error });
+        throw error;
+      });
+      this.cache.set(url, pending);
+    }
+    const source = await this.cache.get(url);
+    if (!clone) return source;
+    const scene = this.prepare(skeletonClone(source.scene), { world });
+    return { ...source, scene, animations: source.animations.map(clip => clip.clone()) };
+  }
+
+  async loadFirst(candidates, options = {}) {
+    const errors = [];
+    for (const url of candidates.filter(Boolean)) {
+      try {
+        return await this.loadModel(url, options);
+      } catch (error) {
+        errors.push(`${url}: ${error.message}`);
+      }
+    }
+    throw new Error(`No model candidate loaded. ${errors.join(' | ')}`);
+  }
+
+  loadGLB(url, options = {}) {
+    return this.loadModel(url, options);
+  }
+
+  async loadJSON(url) {
+    if (!this.cache.has(url)) {
+      this.cache.set(url, fetch(url, { cache: 'no-cache' }).then(response => {
+        if (!response.ok) throw new Error(`${response.status} ${url}`);
+        return response.json();
+      }));
+    }
+    return this.cache.get(url);
+  }
+
+  dispose() {
+    this.cache.clear();
+  }
 }

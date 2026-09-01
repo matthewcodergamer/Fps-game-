@@ -10,12 +10,13 @@ export class RepositoryAudio extends AudioManager{
   }
   async prewarm(weaponBank='lmg_combat'){
     await this.loadPermanent();
-    await Promise.allSettled([
-      this.preloadWeapon(weaponBank),
-      this.preloadResident('collision',{limit:12}),
-      this.preloadResident('explosions',{limit:10}),
-      this.preloadResident('weapons',{limit:8})
+    const [weapon,collision,explosions,weapons]=await Promise.all([
+      this.preloadWeapon(weaponBank,{limit:8}),
+      this.preloadResident('collision',{limit:5}),
+      this.preloadResident('explosions',{limit:4}),
+      this.preloadResident('weapons',{limit:4})
     ]);
+    return{weapon,collision,explosions,weapons,indexed:this.indexedFiles};
   }
   flashRing(strength=.7){
     if(!this.ctx||!this.master)return;

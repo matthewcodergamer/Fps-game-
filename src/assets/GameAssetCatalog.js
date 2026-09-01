@@ -38,5 +38,8 @@ export const ENVIRONMENT_ASSETS={
     './game-assets/models/environment/cover/old_military_crate.glb'
   ],
   terrain:['./game-assets/models/environment/terrain/boulder_01.glb'],
-  buildings:Array.from({length:18},(_,i)=>`./game-assets/models/environment/buildings/kenney-industrial/building-${String.fromCharCode(97+i)}.glb`)
+  buildings:Array.from({length:20},(_,i)=>`./game-assets/models/environment/buildings/kenney-industrial/building-${String.fromCharCode(97+i)}.glb`),
+  enterableBuildings:['a','b','c','e','f','g','h','j','l','n','q','r','t'].map(
+    name=>`./game-assets/models/environment/buildings/kenney-industrial/enterable/building-${name}-enterable.glb`
+  )
 };

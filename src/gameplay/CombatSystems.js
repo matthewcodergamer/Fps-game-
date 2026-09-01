@@ -1,4 +1,4 @@
-import * as THREE from 'three/webgpu';
+import * as THREE from 'three';
 
 const _up=new THREE.Vector3(0,1,0);
 const _front=new THREE.Vector3(0,0,-1);
