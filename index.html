@@ -1,2 +1,38 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="theme-color" content="#05070a"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="manifest" href="manifest.webmanifest"><link rel="stylesheet" href="styles.css"><title>Project Strike</title><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script></head><body><div id="app"><canvas id="game"></canvas><div id="boot" class="panel boot"><div class="brandRow"><div class="strikeMark">PS</div><div><div class="eyebrow">PROJECT STRIKE</div><div class="buildTag">STAGE 3 · HERO WEAPONS + CHARACTER</div></div></div><h1>TACTICAL FPS</h1><p class="lead">High-realism browser FPS built for iPhone and desktop. Stage 1 and Stage 2 are complete; Stage 3 replaces prototype geometry with production weapon, hands and soldier assets while preserving the physics, PBR, LOD, quality and multiplayer foundations.</p><div class="boot-actions"><button id="playBtn" class="primary">DEPLOY</button><label class="secondary fileBtn">IMPORT AUDIO PACKS<input id="audioZip" type="file" accept=".zip,application/zip" multiple></label><button id="roadmapBtn" class="secondary">BUILD STATUS</button></div><div id="audioStatus" class="muted">Audio layers: resident / weapons_player / dlc_weapons · local ZIP import remains available while permanent WAV deployment is prepared</div><div class="systems"><span>THREE.JS</span><span>RAPIER WASM</span><span>GLB/KTX2</span><span>LOD</span><span>PBR</span><span>WEB AUDIO</span><span>MULTIPLAYER</span></div></div><aside id="roadmap" class="roadmap hidden"><div class="roadmapHead"><div><div class="eyebrow">DEVELOPMENT</div><h2>BUILD ROADMAP</h2></div><button id="closeRoadmap">×</button></div><div id="stageList"></div></aside><div id="hud" class="hidden"><div id="crosshair"><span></span><span></span><span></span><span></span></div><div class="topbar"><div id="fps">60 FPS</div><div id="statusText">READY</div><div id="stageBadge">S3</div></div><div class="ammo"><strong id="ammo">30</strong><span>/ 90</span></div><div id="hitmarker">×</div><div id="leftPad" class="touchPad"><div class="stick"></div></div><div id="lookZone"></div><div class="buttons"><button id="fireBtn" class="round fire">FIRE</button><button id="adsBtn" class="round">ADS</button><button id="reloadBtn" class="round small">R</button><button id="jumpBtn" class="round small">JUMP</button><button id="slideBtn" class="round small">SLIDE</button></div></div></div><script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script><script type="module" src="src/main-stage2.js"></script><script type="module" src="src/runtime-stage2-hooks.js"></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="theme-color" content="#05070a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css">
+  <title>Project Strike</title>
+  <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.webgpu.js","three/webgpu":"https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.webgpu.js","three/tsl":"https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.tsl.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/"}}</script>
+</head>
+<body>
+<div id="app">
+  <canvas id="game"></canvas>
+  <div id="boot" class="panel boot">
+    <div class="brandRow"><div class="strikeMark">PS</div><div><div class="eyebrow">PROJECT STRIKE</div><div class="buildTag">STAGE 3 PLAYABLE · CINEMATIC WEB FPS</div></div></div>
+    <h1>TACTICAL FPS</h1>
+    <p class="lead">Cyberpunk-inspired lighting, COD-style first-person weight, competitive readability and bodycam-like physicality — built from the real Project Strike models, operators, animation libraries and permanent weapon audio.</p>
+    <div id="renderStatus" class="renderStatus">Detecting renderer…</div>
+    <div class="boot-actions"><button id="playBtn" class="primary" disabled>LOADING</button><label class="secondary fileBtn">IMPORT EXTRA AUDIO<input id="audioZip" type="file" accept=".zip,application/zip" multiple></label><button id="roadmapBtn" class="secondary">BUILD STATUS</button></div>
+    <div id="audioStatus" class="muted">Permanent repository audio loads automatically. ZIP import remains available for testing additional banks.</div>
+    <div class="systems"><span>WEBGPU / WEBGL2</span><span>THREE.JS 0.185</span><span>SSGI / GTAO</span><span>RAPIER</span><span>GLB / KTX2</span><span>WEB AUDIO</span><span>GAMEPAD</span></div>
+  </div>
+  <aside id="roadmap" class="roadmap hidden"><div class="roadmapHead"><div><div class="eyebrow">DEVELOPMENT</div><h2>BUILD ROADMAP</h2></div><button id="closeRoadmap">×</button></div><div id="stageList"></div></aside>
+  <div id="hud" class="hidden">
+    <div id="crosshair"><span></span><span></span><span></span><span></span></div>
+    <div class="topbar"><div><span id="fps">60 FPS</span><span id="controllerStatus" class="controlMode">TOUCH/MOUSE</span></div><div id="statusText">READY</div><div id="stageBadge">S3</div></div>
+    <div id="weaponName">M4A1</div><div class="ammo"><strong id="ammo">30</strong><span>/ 120</span></div><div id="hitmarker">×</div>
+    <div id="leftPad" class="touchPad"><div class="stick"></div></div><div id="lookZone"></div>
+    <div class="buttons"><button id="fireBtn" class="round fire">FIRE</button><button id="adsBtn" class="round">ADS</button><button id="reloadBtn" class="round small">R</button><button id="jumpBtn" class="round small">JUMP</button><button id="slideBtn" class="round small">SLIDE</button><button id="switchBtn" class="round small switch">SWAP</button></div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script type="module" src="src/main-stage3.js"></script>
+</body>
+</html>

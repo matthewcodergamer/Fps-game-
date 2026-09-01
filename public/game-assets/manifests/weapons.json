@@ -1,52 +1,12 @@
 {
-  "version": 1,
+  "version": 2,
+  "defaultWeapon": "m4a1_hero",
   "weapons": [
-    {
-      "id": "m4a1_hero",
-      "class": "rifle",
-      "model": "/game-assets/models/weapons/rifles/m4a1/m4a1.glb",
-      "lods": [],
-      "sockets": {
-        "muzzle": "MuzzleSocket",
-        "ejection": "EjectionSocket",
-        "magazine": "MagazineSocket",
-        "optic": "OpticSocket",
-        "leftHand": "LeftHandSocket",
-        "rightHand": "RightHandSocket"
-      },
-      "movingParts": ["bolt", "charging_handle", "magazine", "trigger"],
-      "animations": {
-        "idle": null,
-        "fire": null,
-        "reloadTactical": null,
-        "reloadEmpty": null,
-        "inspect": null
-      },
-      "audio": {
-        "fire": [],
-        "magOut": [],
-        "magIn": [],
-        "bolt": [],
-        "selector": []
-      },
-      "status": "awaiting_asset"
-    },
-    {
-      "id": "service_pistol",
-      "class": "pistol",
-      "model": "/game-assets/models/weapons/pistols/service_pistol/service_pistol.glb",
-      "lods": [],
-      "sockets": {
-        "muzzle": "MuzzleSocket",
-        "ejection": "EjectionSocket",
-        "magazine": "MagazineSocket",
-        "leftHand": "LeftHandSocket",
-        "rightHand": "RightHandSocket"
-      },
-      "movingParts": ["slide", "magazine_loaded", "magazine_empty", "hammer", "trigger"],
-      "animations": {},
-      "audio": {},
-      "status": "awaiting_asset"
-    }
-  ]
+    {"id":"m4a1_hero","class":"rifle","displayName":"M4A1","model":"./game-assets/models/weapons/rifles/colt_m4a1_carbine.glb","audioBank":"lmg_combat","magazine":30,"reserve":120,"fireRate":700,"damage":34,"viewLength":0.92,"status":"ready"},
+    {"id":"service_pistol","class":"pistol","displayName":"Service Pistol","model":"./game-assets/models/weapons/pistols/service_pistol.glb","audioBank":"ptl_pistol","magazine":17,"reserve":68,"fireRate":420,"damage":28,"viewLength":0.45,"status":"ready"},
+    {"id":"ak74","class":"rifle","displayName":"AK-74","model":"./game-assets/models/weapons/rifles/ak74.glb","audioBank":"lmg_mg_player","magazine":30,"reserve":120,"fireRate":600,"damage":38,"viewLength":0.9,"status":"ready"},
+    {"id":"mp5a5","class":"smg","displayName":"MP5A5","model":"./game-assets/models/weapons/smgs/mp5a5.glb","audioBank":"smg_smg","magazine":30,"reserve":150,"fireRate":800,"damage":24,"viewLength":0.7,"status":"ready"},
+    {"id":"awm","class":"sniper","displayName":"AWM","model":"./game-assets/models/weapons/snipers/awm.glb","audioBank":"snp_rifle","magazine":5,"reserve":25,"fireRate":48,"damage":100,"viewLength":1.05,"status":"ready"}
+  ],
+  "viewmodel": {"sockets":["MuzzleSocket","EjectionSocket","MagazineSocket","OpticSocket","LeftHandSocket","RightHandSocket"],"proceduralLayers":["weapon_sway","camera_inertia","recoil","sprint_weight","slide_tilt","ads_alignment","reload_mechanics"]}
 }
