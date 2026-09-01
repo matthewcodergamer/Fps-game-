@@ -1,5 +1,32 @@
-const CACHE='project-strike-shell-v2';
-const SHELL=['./','./index.html','./styles.css','./manifest.webmanifest','./src/main-stage2.js','./src/runtime-stage2-hooks.js','./src/audio/AudioManager.js','./src/core/Stages.js','./src/ui/RoadmapUI.js'];
-self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())));
-self.addEventListener('activate',e=>e.waitUntil((async()=>{for(const k of await caches.keys())if(k.startsWith('project-strike-shell-')&&k!==CACHE)await caches.delete(k);await self.clients.claim()})()));
-self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(u.origin!==location.origin)return;if(u.pathname.includes('/game-assets/audio/')||u.pathname.includes('/manifest/')){e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)));return}e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).then(res=>{if(res.ok&&e.request.method==='GET'){const clone=res.clone();caches.open(CACHE).then(c=>c.put(e.request,clone))}return res}).catch(()=>e.request.mode==='navigate'?caches.match('./index.html'):Response.error())))});
+const CACHE='project-strike-shell-v4';
+const SHELL=['./','./index.html','./styles.css','./manifest.webmanifest'];
+self.addEventListener('install',event=>event.waitUntil((async()=>{
+  const cache=await caches.open(CACHE);
+  await cache.addAll(SHELL);
+  await self.skipWaiting();
+})()));
+self.addEventListener('activate',event=>event.waitUntil((async()=>{
+  for(const key of await caches.keys())if(key.startsWith('project-strike-shell-')&&key!==CACHE)await caches.delete(key);
+  await self.clients.claim();
+})()));
+self.addEventListener('fetch',event=>{
+  const req=event.request;if(req.method!=='GET')return;
+  const url=new URL(req.url);if(url.origin!==location.origin)return;
+  const code=/\.(?:html|js|css|json)$/i.test(url.pathname)||req.mode==='navigate';
+  const largeAsset=/\.(?:glb|gltf|ktx2|wav|bin)$/i.test(url.pathname);
+  if(code){
+    event.respondWith((async()=>{
+      try{const fresh=await fetch(req,{cache:'no-cache'});if(fresh.ok){const cache=await caches.open(CACHE);cache.put(req,fresh.clone())}return fresh}
+      catch{const cached=await caches.match(req);return cached||(req.mode==='navigate'?await caches.match('./index.html'):Response.error())}
+    })());
+    return;
+  }
+  if(largeAsset){
+    event.respondWith((async()=>{
+      const cached=await caches.match(req);if(cached)return cached;
+      const fresh=await fetch(req);if(fresh.ok){const cache=await caches.open(CACHE);cache.put(req,fresh.clone())}return fresh
+    })());
+    return;
+  }
+  event.respondWith(fetch(req).catch(()=>caches.match(req)));
+});
