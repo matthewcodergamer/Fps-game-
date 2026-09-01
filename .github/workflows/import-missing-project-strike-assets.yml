@@ -1,0 +1,314 @@
+name: Import missing Project Strike assets
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/import-missing-project-strike-assets.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: import-missing-project-strike-assets
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout FPS repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Install glTF tooling
+        run: npm install --global @gltf-transform/cli
+
+      - name: Fetch vetted open asset sources
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/steel-tide
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/AetherRadar/operation-steel-tide.git /tmp/steel-tide
+          git -C /tmp/steel-tide sparse-checkout set \
+            assets/models/quaternius_ultimate_guns \
+            assets/models/kenney_city_kit_industrial \
+            assets/models/bamen_military_soldier \
+            assets/models/concrete_road_barrier \
+            assets/models/old_military_crate \
+            source_art/third_party/quaternius_universal_animation_library \
+            docs
+
+      - name: Import missing ready runtime assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC=/tmp/steel-tide
+
+          copy_missing() {
+            local src="$1" dst="$2"
+            if [ ! -e "$dst" ]; then
+              mkdir -p "$(dirname "$dst")"
+              cp -a "$src" "$dst"
+              echo "IMPORTED $dst"
+            else
+              echo "KEEP existing $dst"
+            fi
+          }
+
+          # Quaternius Ultimate Guns Pack — CC0. These fill weapon categories that
+          # are empty/thin without replacing any of the assets already in the FPS repo.
+          copy_missing "$SRC/assets/models/quaternius_ultimate_guns/m1911.glb" "public/game-assets/models/weapons/pistols/m1911.glb"
+          copy_missing "$SRC/assets/models/quaternius_ultimate_guns/p226.glb" "public/game-assets/models/weapons/pistols/p226.glb"
+          copy_missing "$SRC/assets/models/quaternius_ultimate_guns/m3a1.glb" "public/game-assets/models/weapons/smgs/m3a1.glb"
+          copy_missing "$SRC/assets/models/quaternius_ultimate_guns/mp5a5.glb" "public/game-assets/models/weapons/smgs/mp5a5.glb"
+          copy_missing "$SRC/assets/models/quaternius_ultimate_guns/ak74.glb" "public/game-assets/models/weapons/rifles/ak74.glb"
+          copy_missing "$SRC/assets/models/quaternius_ultimate_guns/scarl.glb" "public/game-assets/models/weapons/rifles/scarl.glb"
+          copy_missing "$SRC/assets/models/quaternius_ultimate_guns/vss.glb" "public/game-assets/models/weapons/rifles/vss.glb"
+          copy_missing "$SRC/assets/models/quaternius_ultimate_guns/m24.glb" "public/game-assets/models/weapons/snipers/m24.glb"
+          copy_missing "$SRC/assets/models/quaternius_ultimate_guns/awm.glb" "public/game-assets/models/weapons/snipers/awm.glb"
+          copy_missing "$SRC/assets/models/quaternius_ultimate_guns/axmc.glb" "public/game-assets/models/weapons/snipers/axmc.glb"
+          copy_missing "$SRC/assets/models/quaternius_ultimate_guns/LICENSE.md" "public/game-assets/manifests/third-party/quaternius-ultimate-guns-LICENSE.md"
+
+          # Kenney City Kit (Industrial) — CC0. Preserve the pack layout so its GLBs
+          # retain any shared texture relationships.
+          mkdir -p public/game-assets/models/environment/buildings/kenney-industrial
+          rsync -a --ignore-existing "$SRC/assets/models/kenney_city_kit_industrial/" "public/game-assets/models/environment/buildings/kenney-industrial/"
+
+          # BAMEN military operator — CC BY 4.0. Keep the attribution file beside it.
+          copy_missing "$SRC/assets/models/bamen_military_soldier/bamen_military_soldier.glb" "public/game-assets/models/characters/operators/bamen_military_soldier.glb"
+          copy_missing "$SRC/assets/models/bamen_military_soldier/bamen_military_soldier_animated.glb" "public/game-assets/models/characters/operators/bamen_military_soldier_animated.glb"
+          copy_missing "$SRC/assets/models/bamen_military_soldier/LICENSE.md" "public/game-assets/models/characters/operators/BAMEN_LICENSE.md"
+
+          # Quaternius Universal Animation Library — CC0, broad locomotion/combat/gun/death coverage.
+          copy_missing "$SRC/source_art/third_party/quaternius_universal_animation_library/UAL1_Standard.glb" "public/game-assets/animations/library/quaternius_UAL1_Standard.glb"
+          copy_missing "$SRC/source_art/third_party/quaternius_universal_animation_library/UAL2_Standard.glb" "public/game-assets/animations/library/quaternius_UAL2_Standard.glb"
+          copy_missing "$SRC/source_art/third_party/quaternius_universal_animation_library/LICENSE.txt" "public/game-assets/animations/library/QUATERNIUS_LICENSE.txt"
+          copy_missing "$SRC/source_art/third_party/quaternius_universal_animation_library/README.txt" "public/game-assets/animations/library/QUATERNIUS_README.txt"
+
+          # Poly Haven CC0 cover props already mirrored with dependencies in the vetted source repo.
+          mkdir -p public/game-assets/models/environment/cover
+          if [ ! -e public/game-assets/models/environment/cover/concrete_road_barrier.glb ]; then
+            gltf-transform copy "$SRC/assets/models/concrete_road_barrier/concrete_road_barrier.gltf" "public/game-assets/models/environment/cover/concrete_road_barrier.glb"
+          fi
+          if [ ! -e public/game-assets/models/environment/cover/old_military_crate.glb ]; then
+            gltf-transform copy "$SRC/assets/models/old_military_crate/old_military_crate.gltf" "public/game-assets/models/environment/cover/old_military_crate.glb"
+          fi
+          copy_missing "$SRC/docs/CONTENT_PROVENANCE.md" "public/game-assets/manifests/third-party/operation-steel-tide-CONTENT_PROVENANCE.md"
+
+      - name: Download exact researched Poly Haven assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, os, shutil, subprocess
+          from pathlib import Path, PurePosixPath
+          from urllib.parse import unquote, urlparse
+          from urllib.request import Request, urlopen
+
+          UA = 'ProjectStrikeAssetImporter/1.0 (+https://github.com/matthewcodergamer/Fps-game-)'
+          ROOT = Path.cwd()
+          TMP = Path('/tmp/project-strike-polyhaven')
+          TMP.mkdir(parents=True, exist_ok=True)
+
+          TARGETS = {
+              'service_pistol': ROOT / 'public/game-assets/models/weapons/pistols/service_pistol.glb',
+              'boulder_01': ROOT / 'public/game-assets/models/environment/terrain/boulder_01.glb',
+          }
+
+          def get_json(url):
+              req = Request(url, headers={'User-Agent': UA, 'Accept': 'application/json'})
+              with urlopen(req, timeout=60) as r:
+                  return json.load(r)
+
+          def records(node):
+              out = []
+              if isinstance(node, dict):
+                  if isinstance(node.get('url'), str):
+                      out.append(node)
+                  for value in node.values():
+                      out.extend(records(value))
+              elif isinstance(node, list):
+                  for value in node:
+                      out.extend(records(value))
+              return out
+
+          def pick_gltf(files):
+              preferred = files.get('gltf', {}).get('1k') if isinstance(files, dict) else None
+              pool = records(preferred) if preferred else []
+              if not pool:
+                  pool = records(files)
+              gltfs = [r for r in pool if urlparse(r.get('url','')).path.lower().endswith('.gltf')]
+              glbs = [r for r in pool if urlparse(r.get('url','')).path.lower().endswith('.glb')]
+              if gltfs:
+                  return gltfs[0], pool
+              if glbs:
+                  return glbs[0], pool
+              raise RuntimeError('Poly Haven response did not contain a glTF/GLB model file')
+
+          def download(rec, dst):
+              dst.parent.mkdir(parents=True, exist_ok=True)
+              req = Request(rec['url'], headers={'User-Agent': UA})
+              with urlopen(req, timeout=180) as r, dst.open('wb') as w:
+                  shutil.copyfileobj(r, w, 1024 * 1024)
+              expected = rec.get('md5')
+              if expected:
+                  actual = hashlib.md5(dst.read_bytes()).hexdigest()
+                  if actual.lower() != str(expected).lower():
+                      raise RuntimeError(f'MD5 mismatch for {dst.name}')
+
+          for asset, dest in TARGETS.items():
+              if dest.exists():
+                  print('KEEP existing', dest)
+                  continue
+              files = get_json(f'https://api.polyhaven.com/files/{asset}')
+              main_rec, pool = pick_gltf(files)
+              work = TMP / asset
+              downloads = work / '_downloads'
+              shutil.rmtree(work, ignore_errors=True)
+              downloads.mkdir(parents=True, exist_ok=True)
+
+              # Download every record in the selected 1K glTF package branch. This
+              # includes the model's .bin/image dependencies when Poly Haven lists them.
+              by_basename = {}
+              unique = {}
+              for rec in pool + records(main_rec.get('include', {})):
+                  url = rec.get('url')
+                  if not url:
+                      continue
+                  unique[url] = rec
+              for rec in unique.values():
+                  bn = unquote(Path(urlparse(rec['url']).path).name)
+                  if not bn:
+                      continue
+                  local = downloads / bn
+                  if not local.exists():
+                      download(rec, local)
+                  by_basename.setdefault(bn, local)
+
+              main_bn = unquote(Path(urlparse(main_rec['url']).path).name)
+              main_download = by_basename.get(main_bn)
+              if main_download is None:
+                  main_download = downloads / main_bn
+                  download(main_rec, main_download)
+
+              dest.parent.mkdir(parents=True, exist_ok=True)
+              if main_download.suffix.lower() == '.glb':
+                  shutil.copy2(main_download, dest)
+                  print('IMPORTED Poly Haven', asset, '->', dest)
+                  continue
+
+              main = work / main_bn
+              shutil.copy2(main_download, main)
+              doc = json.loads(main.read_text(encoding='utf-8'))
+              uris = []
+              for b in doc.get('buffers', []):
+                  if b.get('uri') and not str(b['uri']).startswith('data:'):
+                      uris.append(str(b['uri']))
+              for im in doc.get('images', []):
+                  if im.get('uri') and not str(im['uri']).startswith('data:'):
+                      uris.append(str(im['uri']))
+              for uri in uris:
+                  clean = PurePosixPath(unquote(uri))
+                  if '..' in clean.parts:
+                      raise RuntimeError(f'Unsafe glTF dependency path: {uri}')
+                  source = by_basename.get(Path(clean.name).name)
+                  if source is None:
+                      raise RuntimeError(f'Missing Poly Haven dependency for {asset}: {uri}')
+                  target = work.joinpath(*clean.parts)
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copy2(source, target)
+
+              subprocess.run(['gltf-transform', 'copy', str(main), str(dest)], check=True)
+              print('IMPORTED Poly Haven', asset, '->', dest)
+          PY
+
+      - name: Write source and license manifest
+        shell: bash
+        run: |
+          mkdir -p public/game-assets/manifests/asset-sources
+          cat > public/game-assets/manifests/asset-sources/project-strike-missing-assets.md <<'EOF'
+          # Project Strike missing asset import
+
+          This file records the open/licensed sources used by the automated missing-asset importer.
+
+          ## Poly Haven — CC0
+          - Service Pistol (`service_pistol`) -> `models/weapons/pistols/service_pistol.glb`
+          - Boulder 01 (`boulder_01`) -> `models/environment/terrain/boulder_01.glb`
+          - Source API: Poly Haven public API. Powered by Poly Haven.
+          - Asset license: CC0 / public domain.
+
+          ## Quaternius — CC0
+          - Ultimate Guns Pack: M1911, P226, M3A1, MP5A5, AK74, SCAR-L, VSS, M24, AWM, AXMC.
+          - Universal Animation Library: UAL1 Standard and UAL2 Standard.
+          - License copies are stored with the imported assets/manifests.
+
+          ## Kenney — CC0
+          - City Kit (Industrial), stored under `models/environment/buildings/kenney-industrial/`.
+          - The source pack license is preserved in that directory.
+
+          ## BAMEN military soldier — CC BY 4.0
+          - `bamen_military_soldier.glb`
+          - `bamen_military_soldier_animated.glb`
+          - Required attribution: FREE [Military Soldier] RIGGED by BAMEN, licensed under CC BY 4.0.
+          - The source license/provenance file is stored beside the models.
+
+          ## Poly Haven cover props — CC0
+          - Concrete Road Barrier
+          - Old Military Crate
+          - Imported from the provenance-tracked `AetherRadar/operation-steel-tide` mirror and converted to self-contained GLB.
+
+          ## Deliberately not imported
+          The previously tested `mp7_-_codmw2019_pbr.glb` was not copied because its source page identifies it as a rip from Call of Duty: Modern Warfare 2019. The CC0 MP5A5/M3A1 models above provide clean SMG alternatives.
+          EOF
+
+      - name: Validate runtime assets and GitHub size limits
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path('public/game-assets')
+          failures = []
+          glbs = list(root.rglob('*.glb'))
+          for p in glbs:
+              size = p.stat().st_size
+              if size >= 100 * 1024 * 1024:
+                  failures.append(f'{p}: {size} bytes >= GitHub 100 MiB limit')
+              with p.open('rb') as f:
+                  if f.read(4) != b'glTF':
+                      failures.append(f'{p}: invalid GLB magic')
+          if failures:
+              raise SystemExit('\n'.join(failures))
+          required = [
+              'public/game-assets/models/weapons/pistols/m1911.glb',
+              'public/game-assets/models/weapons/pistols/p226.glb',
+              'public/game-assets/models/weapons/smgs/mp5a5.glb',
+              'public/game-assets/models/weapons/rifles/ak74.glb',
+              'public/game-assets/models/characters/operators/bamen_military_soldier_animated.glb',
+              'public/game-assets/animations/library/quaternius_UAL1_Standard.glb',
+              'public/game-assets/models/environment/cover/concrete_road_barrier.glb',
+              'public/game-assets/models/environment/cover/old_military_crate.glb',
+              'public/game-assets/models/weapons/pistols/service_pistol.glb',
+              'public/game-assets/models/environment/terrain/boulder_01.glb',
+          ]
+          missing = [p for p in required if not Path(p).exists()]
+          if missing:
+              raise SystemExit('Missing required imports:\n' + '\n'.join(missing))
+          print(f'PASS: {len(glbs)} runtime GLBs validated; all are below 100 MiB.')
+          PY
+
+      - name: Commit imported assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'project-strike-asset-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A public/game-assets
+          if git diff --cached --quiet; then
+            echo 'All selected assets were already present; nothing to commit.'
+            exit 0
+          fi
+          git commit -m 'Import missing open Project Strike runtime assets'
+          git pull --rebase origin main
+          git push origin main
