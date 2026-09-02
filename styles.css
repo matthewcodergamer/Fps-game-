@@ -564,6 +564,8 @@ button {
 }
 
 .scopeGlass {
+  --lens-shift-x: 0px;
+  --lens-shift-y: 0px;
   position: absolute;
   top: 50%;
   left: 50%;
@@ -571,16 +573,31 @@ button {
   max-width: 720px;
   height: 60vmin;
   max-height: 720px;
+  overflow: hidden;
   border: 3px solid rgba(3, 5, 6, .94);
   border-radius: 50%;
+  background:
+    radial-gradient(circle at calc(50% + var(--lens-shift-x)) calc(50% + var(--lens-shift-y)), rgba(105, 185, 220, .055), transparent 55%),
+    linear-gradient(125deg, rgba(135, 205, 235, .035), transparent 42%);
   box-shadow: 0 0 0 7px rgba(0, 0, 0, .86), inset 0 0 34px rgba(10, 18, 24, .42);
   transform: translate(-50%, -50%);
+}
+
+.scopeGlass::after {
+  position: absolute;
+  inset: 5%;
+  border-radius: 50%;
+  background: radial-gradient(circle at calc(48% + var(--lens-shift-x)) calc(46% + var(--lens-shift-y)), rgba(255,255,255,.07), transparent 20%);
+  content: "";
+  opacity: .7;
+  pointer-events: none;
 }
 
 .scopeH,
 .scopeV,
 .scopeDot {
   position: absolute;
+  z-index: 2;
   top: 50%;
   left: 50%;
   background: rgba(255, 255, 255, .85);
@@ -590,7 +607,7 @@ button {
 
 .scopeH { width: 74%; height: 1px; }
 .scopeV { width: 1px; height: 74%; }
-.scopeDot { width: 4px; height: 4px; border-radius: 50%; background: #ff4258; }
+.scopeDot { width: 4px; height: 4px; border-radius: 50%; background: #ff4258; will-change: transform; }
 
 #flashOverlay {
   position: absolute;
