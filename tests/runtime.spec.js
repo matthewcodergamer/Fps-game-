@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { expect, test } from '@playwright/test';
 
-test('boots V4, renders repository viewmodel, and enters gameplay', async ({ page }, testInfo) => {
+test('boots V4 with IK, renders repository viewmodel, and enters gameplay', async ({ page }, testInfo) => {
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
   page.on('console', message => {
@@ -14,11 +14,19 @@ test('boots V4, renders repository viewmodel, and enters gameplay', async ({ pag
   await expect(page.locator('#renderStatus')).toContainText('WebGL2 stable');
   await expect(page.locator('#stageBadge')).toContainText('V4');
 
-  const bootDiagnostics = await page.evaluate(() => window.__PROJECT_STRIKE_DIAGNOSTICS__);
-  expect(bootDiagnostics?.runtime).toBe('v4');
-  expect(bootDiagnostics?.guardedAssetLoads).toBe(true);
-  expect(bootDiagnostics?.trueBody).toBe(true);
-  expect(bootDiagnostics?.barrelBallistics).toBe(true);
+  const bootDiagnostics = await page.evaluate(() => ({
+    runtime: window.__PROJECT_STRIKE_DIAGNOSTICS__,
+    ik: window.__PROJECT_STRIKE_IK__
+  }));
+  expect(bootDiagnostics.runtime?.runtime).toBe('v4');
+  expect(bootDiagnostics.runtime?.guardedAssetLoads).toBe(true);
+  expect(bootDiagnostics.runtime?.trueBody).toBe(true);
+  expect(bootDiagnostics.runtime?.barrelBallistics).toBe(true);
+  expect(bootDiagnostics.runtime?.weaponIK).toBe(true);
+  expect(bootDiagnostics.runtime?.footIK).toBe(true);
+  expect(bootDiagnostics.runtime?.ikSolver).toBe('Three.js CCDIKSolver');
+  expect(bootDiagnostics.ik?.active, JSON.stringify(bootDiagnostics.ik)).toBe(true);
+  expect(bootDiagnostics.ik?.activeChains, JSON.stringify(bootDiagnostics.ik)).toBeGreaterThanOrEqual(1);
 
   await playButton.click();
   await expect(page.locator('#hud')).toBeVisible();
@@ -49,7 +57,8 @@ test('boots V4, renders repository viewmodel, and enters gameplay', async ({ pag
       width: canvas.width,
       height: canvas.height,
       cssWidth: canvas.clientWidth,
-      cssHeight: canvas.clientHeight
+      cssHeight: canvas.clientHeight,
+      ik: window.__PROJECT_STRIKE_IK__
     };
   });
 
@@ -59,6 +68,8 @@ test('boots V4, renders repository viewmodel, and enters gameplay', async ({ pag
     testInfo.project.use.viewport.width / testInfo.project.use.viewport.height,
     1
   );
+  expect(diagnostics.ik?.active, JSON.stringify(diagnostics.ik)).toBe(true);
+
   const screenshot = testInfo.outputPath('gameplay.png');
   await page.screenshot({ path: screenshot, fullPage: true });
   expect(fs.statSync(screenshot).size).toBeGreaterThan(20_000);
