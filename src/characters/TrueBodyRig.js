@@ -88,11 +88,14 @@ export class TrueBodyRig {
     this.raycaster = new THREE.Raycaster();
     this.raycaster.near = 0;
     this.raycaster.far = 1.45;
-    this.groundMeshes = [];
+    this.groundEntries = [];
     this._footOrigin = new THREE.Vector3();
     this._normal = new THREE.Vector3();
     this._rootQuaternion = new THREE.Quaternion();
     this._inverseRootQuaternion = new THREE.Quaternion();
+    this._raycastCandidates = [];
+    this._sampleAccumulator = 0;
+    this._sampleInterval = mobile ? 1 / 18 : 1 / 24;
     this._footState = {
       left: { height: 0, pitch: 0, roll: 0, hit: false },
       right: { height: 0, pitch: 0, roll: 0, hit: false }
@@ -103,8 +106,14 @@ export class TrueBodyRig {
   }
 
   setGroundMeshes(meshes = []) {
-    this.groundMeshes = meshes.filter(object => object?.isMesh);
     this.scene?.updateMatrixWorld(true);
+    this.groundEntries = meshes
+      .filter(object => object?.isMesh)
+      .map(object => ({
+        object,
+        bounds: new THREE.Box3().setFromObject(object)
+      }))
+      .filter(entry => !entry.bounds.isEmpty());
   }
 
   setVisible(value) {
@@ -112,9 +121,26 @@ export class TrueBodyRig {
     this.root.visible = this.visible;
   }
 
+  nearbyGround(origin) {
+    this._raycastCandidates.length = 0;
+    const margin = .32;
+    const minY = origin.y - this.raycaster.far - .08;
+    const maxY = origin.y + .12;
+
+    for (const entry of this.groundEntries) {
+      const bounds = entry.bounds;
+      if (origin.x < bounds.min.x - margin || origin.x > bounds.max.x + margin) continue;
+      if (origin.z < bounds.min.z - margin || origin.z > bounds.max.z + margin) continue;
+      if (bounds.max.y < minY || bounds.min.y > maxY) continue;
+      this._raycastCandidates.push(entry.object);
+    }
+
+    return this._raycastCandidates;
+  }
+
   sampleFoot(sideName, leg) {
     const state = this._footState[sideName];
-    if (!this.groundMeshes.length) {
+    if (!this.groundEntries.length) {
       state.hit = false;
       return state;
     }
@@ -124,8 +150,14 @@ export class TrueBodyRig {
     this.root.localToWorld(this._footOrigin);
     this._footOrigin.y += .42;
 
+    const candidates = this.nearbyGround(this._footOrigin);
+    if (!candidates.length) {
+      state.hit = false;
+      return state;
+    }
+
     this.raycaster.set(this._footOrigin, DOWN);
-    const hit = this.raycaster.intersectObjects(this.groundMeshes, false)[0];
+    const hit = this.raycaster.intersectObjects(candidates, false)[0];
     if (!hit) {
       state.hit = false;
       return state;
@@ -252,14 +284,24 @@ export class TrueBodyRig {
       ? 0
       : THREE.MathUtils.clamp(1 - moveBlend * (sprint ? .72 : .48), .28, 1);
 
-    this.root.updateMatrixWorld(true);
-    const leftFoot = this.sampleFoot('left', this.leftLeg);
-    const rightFoot = this.sampleFoot('right', this.rightLeg);
-    this.applyFootIK(dt, this.leftLeg, leftFoot, {
+    // Ground collision meshes are static. Broad-phase AABBs plus a 18–24 Hz
+    // sampling cadence keep foot IK cheap even when the district has many GLBs.
+    this._sampleAccumulator += dt;
+    if (!airborne && this._sampleAccumulator >= this._sampleInterval) {
+      this._sampleAccumulator %= this._sampleInterval;
+      this.root.updateMatrixWorld(true);
+      this.sampleFoot('left', this.leftLeg);
+      this.sampleFoot('right', this.rightLeg);
+    } else if (airborne) {
+      this._footState.left.hit = false;
+      this._footState.right.hit = false;
+    }
+
+    this.applyFootIK(dt, this.leftLeg, this._footState.left, {
       weight: plantedWeight,
       baseKnee: leftBaseKnee
     });
-    this.applyFootIK(dt, this.rightLeg, rightFoot, {
+    this.applyFootIK(dt, this.rightLeg, this._footState.right, {
       weight: plantedWeight,
       baseKnee: rightBaseKnee
     });
