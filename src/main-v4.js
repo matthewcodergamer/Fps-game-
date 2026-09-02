@@ -42,6 +42,9 @@ const fatalTimer = setTimeout(() => {
     if (status) status.textContent = 'Loading IK and gameplay recovery…';
     await import('./v4-runtime-patch.js');
 
+    if (status) status.textContent = 'Finalizing iPhone procedural fallback…';
+    await import('./ios-survival-runtime-patch.js');
+
     if (status) status.textContent = 'Loading AAA weapon feel…';
     await import('./aaa-runtime-patch.js');
 
