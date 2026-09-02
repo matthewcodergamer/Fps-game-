@@ -1,4 +1,4 @@
-const CACHE = 'project-strike-v6-runtime';
+const CACHE = 'project-strike-v7-runtime';
 const CACHE_PREFIX = 'project-strike-';
 
 self.addEventListener('install', event => {
