@@ -29,14 +29,17 @@ const fatalTimer = setTimeout(() => {
 
 (async () => {
   try {
-    if (status) status.textContent = 'Loading gameplay systems…';
+    if (status) status.textContent = 'Loading IK and gameplay recovery…';
     await import('./v4-runtime-patch.js');
+
+    if (status) status.textContent = 'Loading AAA weapon feel…';
+    await import('./aaa-runtime-patch.js');
 
     if (status) status.textContent = 'Starting WebGL renderer…';
     globalThis.__PROJECT_STRIKE_BOOT__.phase = 'stage3-import';
     await import('./main-stage3.js');
   } catch (error) {
-    console.error('Project Strike V4 startup failed.', error);
+    console.error('Project Strike startup failed.', error);
     if (button) {
       button.disabled = false;
       button.textContent = 'RELOAD';
