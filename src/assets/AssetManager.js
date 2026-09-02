@@ -40,7 +40,7 @@ function timeoutError(url, timeoutMs) {
  * entire boot screen forever.
  */
 export class AssetManager {
-  constructor(renderer, { onProgress = null, timeoutMs = 12000 } = {}) {
+  constructor(renderer, { onProgress = null, timeoutMs = 7000 } = {}) {
     this.renderer = renderer;
     this.onProgress = onProgress;
     this.timeoutMs = timeoutMs;
