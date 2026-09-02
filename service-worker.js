@@ -17,6 +17,8 @@ self.addEventListener('activate', event => {
 async function rememberSmall(request, response) {
   if (!response?.ok) return response;
   const length = Number(response.headers.get('content-length') || 0);
+  // Never clone a multi-megabyte response on mobile Safari. Cache Storage plus
+  // GLTF decoding can otherwise keep two copies alive during the peak.
   if (length > 2_000_000) return response;
   const cache = await caches.open(CACHE);
   await cache.put(request, response.clone());
@@ -68,6 +70,8 @@ self.addEventListener('fetch', event => {
   }
 
   if (url.pathname.includes('/game-assets/') || url.pathname.includes('/public/game-assets/')) {
+    // Critical iOS stability rule: stream GLBs/textures/audio directly. Do not
+    // response.clone() or put them in Cache Storage during gameplay startup.
     event.respondWith(fetchWithSourceFallback(request));
     return;
   }
