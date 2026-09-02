@@ -8,6 +8,15 @@ const reactions = new PhysicalReactionSystem({ mobile });
 let lastBodyHit = null;
 let lastWeapon = { class: 'rifle', damage: 30, recoil: 1, direction: new THREE.Vector3(0, 0, -1) };
 
+const restoreReactionTarget = reactions.restore.bind(reactions);
+reactions.restore = target => {
+  const data = target?.userData || {};
+  for (const mesh of data.psHiddenMeshes || []) mesh.visible = true;
+  data.psHiddenMeshes?.clear?.();
+  data.psDetached?.clear?.();
+  return restoreReactionTarget(target);
+};
+
 // V4 already owns physical barrel-origin ray adjustment. This wrapper observes
 // its final result without changing hit ordering or damage logic.
 const intersectObjects = THREE.Raycaster.prototype.intersectObjects;
@@ -74,5 +83,22 @@ globalThis.__PROJECT_STRIKE_PHYSICAL_REACTIONS__ = {
   stumpPlugs: true,
   bloodParticles: true,
   mobileDebrisCaps: true,
+  respawnRestoration: true,
   euphoriaClaimed: false
 };
+
+const diagnosticsTimer = setInterval(() => {
+  const diagnostics = globalThis.__PROJECT_STRIKE_DIAGNOSTICS__;
+  const button = document.querySelector('#playBtn');
+  if (!diagnostics || !button || button.disabled) return;
+  diagnostics.runtime = 'v7';
+  diagnostics.mobileStability = globalThis.__PROJECT_STRIKE_MOBILE_STABILITY__ || null;
+  diagnostics.physicalReactions = true;
+  diagnostics.limbDamage = true;
+  diagnostics.dismemberment = true;
+  diagnostics.largeAssetCacheDisabled = true;
+  const badge = document.querySelector('#stageBadge');
+  if (badge) badge.textContent = 'V7';
+  clearInterval(diagnosticsTimer);
+}, 100);
+setTimeout(() => clearInterval(diagnosticsTimer), 60_000);
