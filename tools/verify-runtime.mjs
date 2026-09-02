@@ -87,9 +87,16 @@ assertFile(path.join(publicRoot, 'service-worker.js'), 'production service worke
 assertFile(path.resolve('src/animation/CharacterIKRig.js'), 'weapon IK module: src/animation/CharacterIKRig.js');
 
 const index = fs.readFileSync(path.resolve('index.html'), 'utf8');
+const entry = fs.readFileSync(path.resolve('src/main-v4.js'), 'utf8');
 if (!index.includes('src/main-v4.js')) throw new Error('index.html is not booting src/main-v4.js');
-if (!index.includes("./service-worker.js?v=6")) {
-  throw new Error('index.html is not registering the V6 production service worker');
+if (!index.includes("./service-worker.js?v=7")) {
+  throw new Error('index.html is not registering the V7 production service worker');
+}
+if (!index.includes('__PROJECT_STRIKE_ENTRY_LOADED__')) {
+  throw new Error('index.html is missing the early JavaScript boot watchdog');
+}
+if (!entry.includes("await import('./v4-runtime-patch.js')")) {
+  throw new Error('main-v4.js is not using the fast dynamic V4 bootstrap');
 }
 
 const glbs = walk(assetRoot).filter(file => file.toLowerCase().endsWith('.glb'));
@@ -146,6 +153,6 @@ for (const warning of warnings) console.warn(`Runtime warning: ${warning}`);
 
 console.log(
   `Runtime verified: ${glbs.length} GLBs inspected, ${diskFiles.length} WAV files indexed, ` +
-  `IK module present, service worker present, required GLB extensions: ` +
+  `IK module present, fast boot watchdog present, service worker V7 present, required GLB extensions: ` +
   `${[...requiredExtensions].sort().join(', ') || 'none'}, recoverable optional assets: ${warnings.length}.`
 );
