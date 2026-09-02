@@ -23,16 +23,16 @@
   <canvas id="game"></canvas>
 
   <div id="boot" class="panel boot">
-    <div class="brandRow"><div class="strikeMark">PS</div><div><div class="eyebrow">PROJECT STRIKE</div><div class="buildTag">V6 AAA FEEL + IK · GUARDED WEBGL2</div></div></div>
+    <div class="brandRow"><div class="strikeMark">PS</div><div><div class="eyebrow">PROJECT STRIKE</div><div class="buildTag">V7 IOS STABILITY + PHYSICAL REACTIONS · WEBGL2</div></div></div>
     <h1>PROJECT<br>STRIKE</h1>
-    <p class="lead">Repository weapons and rigged arms, CCD hand IK, terrain foot placement, split camera/gun recoil, free-aim inertia, tactical and empty reload states, barrel-origin ballistics, animated operators, real industrial buildings and mobile-scalable cyberpunk lighting.</p>
+    <p class="lead">Repository weapons and rigged arms, CCD hand IK, terrain foot placement, split camera/gun recoil, free-aim inertia, tactical and empty reload states, positional limb damage, physical hit reactions and an iPhone-safe streamed asset path.</p>
     <div id="renderStatus" class="renderStatus">Starting runtime bootstrap…</div>
     <div class="boot-actions">
       <button id="playBtn" class="primary" disabled>LOADING</button>
       <button id="roadmapBtn" class="secondary">BUILD STATUS</button>
     </div>
     <div id="audioStatus" class="muted">Repository audio unlocks after you press Deploy, as required by Safari and desktop browsers.</div>
-    <div class="systems"><span>WEBGL2 STABLE</span><span>THREE.JS 0.185</span><span>CCD IK</span><span>FREE AIM</span><span>SPRING RECOIL</span><span>TACTICAL RELOAD</span><span>EMPTY RELOAD</span><span>TRUE BODY</span><span>BARREL BALLISTICS</span><span>NEON PBR</span><span>1,990 WAV FILES</span><span>GAMEPAD</span></div>
+    <div class="systems"><span>IOS MEMORY GUARD</span><span>STREAMED GLB</span><span>CCD IK</span><span>FREE AIM</span><span>SPRING RECOIL</span><span>LIMB DAMAGE</span><span>STAGGER + LIMP</span><span>DISMEMBERMENT</span><span>TRUE BODY</span><span>BARREL BALLISTICS</span><span>1,990 WAV FILES</span><span>GAMEPAD</span></div>
   </div>
 
   <aside id="roadmap" class="roadmap hidden"><div class="roadmapHead"><div><div class="eyebrow">DEVELOPMENT</div><h2>BUILD ROADMAP</h2></div><button id="closeRoadmap">×</button></div><div id="stageList"></div></aside>
@@ -43,7 +43,7 @@
 
   <div id="hud" class="hidden">
     <div id="crosshair"><span></span><span></span><span></span><span></span></div>
-    <div class="topbar"><div><span id="fps">60 FPS</span><span id="controllerStatus" class="controlMode">TOUCH/MOUSE</span></div><div id="statusText">READY</div><div id="stageBadge">V6</div></div>
+    <div class="topbar"><div><span id="fps">60 FPS</span><span id="controllerStatus" class="controlMode">TOUCH/MOUSE</span></div><div id="statusText">READY</div><div id="stageBadge">V7</div></div>
     <div id="weaponName">M4A1</div><div class="ammo"><strong id="ammo">30</strong><span>/ 120</span></div><div id="hitmarker">×</div>
     <div id="leftPad" class="touchPad"><div class="stick"></div></div><div id="lookZone"></div>
     <div class="buttons">
@@ -78,12 +78,10 @@ setTimeout(() => {
 (() => {
   const sourceEntry = [...document.querySelectorAll('script[type="module"][src]')]
     .some(script => /(?:^|\/)src\/main-v4\.js(?:[?#]|$)/.test(script.getAttribute('src') || ''));
-  window.__PROJECT_STRIKE_SOURCE_MODE__ = sourceEntry;
-  if (!sourceEntry || !window.fetch) return;
+  const localDev = /^(?:localhost|127\.0\.0\.1)$/.test(location.hostname);
+  window.__PROJECT_STRIKE_SOURCE_MODE__ = sourceEntry && !localDev;
+  if (!window.__PROJECT_STRIKE_SOURCE_MODE__ || !window.fetch) return;
 
-  // When somebody opens the repository HTML directly instead of the Vite Pages
-  // artifact, Three.js modules still work through the import map above and all
-  // runtime asset requests are transparently mapped to public/game-assets/.
   const nativeFetch = window.fetch.bind(window);
   window.fetch = (input, init) => {
     try {
@@ -106,7 +104,7 @@ setTimeout(() => {
 </script>
 <script>
 if ('serviceWorker' in navigator) {
-  addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js?v=8')
+  addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js?v=9')
     .then(registration => registration.update())
     .catch(error => console.info('Service worker unavailable; online runtime is unaffected.', error)));
 }
