@@ -131,23 +131,42 @@ const readyTimer = setInterval(() => {
 }, 80);
 setTimeout(() => clearInterval(readyTimer), 60_000);
 
-// Publish V8 after the V4 diagnostics object has been created. This also gives
-// the user a visible freshness marker so a stale V6 page is obvious immediately.
-const diagnosticTimer = setInterval(() => {
+function enforceV8Identity() {
   const diagnostics = globalThis.__PROJECT_STRIKE_DIAGNOSTICS__;
-  if (!diagnostics) return;
-  Object.assign(diagnostics, {
-    runtime: 'v8',
-    iosSurvivalBoot: survivalMode,
-    zeroModelStartup: survivalMode,
-    largeAssetCacheDisabled: true,
-    productionServiceWorker: 'v10'
-  });
+  if (diagnostics) {
+    Object.assign(diagnostics, {
+      runtime: 'v8',
+      iosSurvivalBoot: survivalMode,
+      zeroModelStartup: survivalMode,
+      largeAssetCacheDisabled: true,
+      productionServiceWorker: 'v10'
+    });
+  }
   const badge = document.querySelector('#stageBadge');
-  if (badge) badge.textContent = 'V8';
-  clearInterval(diagnosticTimer);
-}, 100);
-setTimeout(() => clearInterval(diagnosticTimer), 60_000);
+  if (badge && badge.textContent !== 'V8') badge.textContent = 'V8';
+}
+
+// Older Stage 3/V4 layers still publish their own historical badge while they
+// initialize. V8 is the authoritative outer runtime, so keep its visible and
+// diagnostic identity stable throughout startup instead of setting it only once.
+enforceV8Identity();
+const identityTimer = setInterval(enforceV8Identity, 200);
+setTimeout(() => {
+  enforceV8Identity();
+  clearInterval(identityTimer);
+}, 90_000);
+
+const badge = document.querySelector('#stageBadge');
+if (badge && 'MutationObserver' in globalThis) {
+  const badgeObserver = new MutationObserver(() => {
+    if (badge.textContent !== 'V8') badge.textContent = 'V8';
+  });
+  badgeObserver.observe(badge, { childList: true, characterData: true, subtree: true });
+  setTimeout(() => {
+    enforceV8Identity();
+    badgeObserver.disconnect();
+  }, 90_000);
+}
 
 const stableTimer = setInterval(() => {
   const boot = document.querySelector('#boot');
