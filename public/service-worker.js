@@ -1,4 +1,4 @@
-const CACHE = 'project-strike-v7-runtime';
+const CACHE = 'project-strike-v8-runtime';
 const CACHE_PREFIX = 'project-strike-';
 
 self.addEventListener('install', event => {
@@ -21,9 +21,25 @@ async function remember(request, response) {
   return response;
 }
 
+async function fetchWithSourceFallback(request) {
+  const response = await fetch(request);
+  if (response.ok) return response;
+
+  const url = new URL(request.url);
+  if (url.pathname.includes('/game-assets/') && !url.pathname.includes('/public/game-assets/')) {
+    const fallbackUrl = new URL(url.href);
+    fallbackUrl.pathname = url.pathname.replace('/game-assets/', '/public/game-assets/');
+    const fallback = await fetch(new Request(fallbackUrl.href, request));
+    if (fallback.ok) return fallback;
+  }
+  return response;
+}
+
 async function networkFirst(request, fallback = null) {
   try {
-    return await remember(request, await fetch(request));
+    const response = await fetchWithSourceFallback(request);
+    if (!response.ok) throw new Error(`${response.status} ${request.url}`);
+    return await remember(request, response);
   } catch {
     const cached = await caches.match(request);
     if (cached) return cached;
@@ -38,7 +54,8 @@ async function networkFirst(request, fallback = null) {
 async function cacheFirst(request) {
   const cached = await caches.match(request);
   if (cached) return cached;
-  return remember(request, await fetch(request));
+  const response = await fetchWithSourceFallback(request);
+  return remember(request, response);
 }
 
 self.addEventListener('fetch', event => {
@@ -57,9 +74,7 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  if (url.pathname.includes('/game-assets/')) {
-    // Asset paths can be replaced in-place between builds, so prefer the
-    // network and keep the last known-good response only as an offline backup.
+  if (url.pathname.includes('/game-assets/') || url.pathname.includes('/public/game-assets/')) {
     event.respondWith(networkFirst(request));
     return;
   }
