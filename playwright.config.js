@@ -2,7 +2,10 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests',
-  timeout: 90_000,
+  // Desktop intentionally loads the complete repository scene and can spend
+  // well over a minute decoding it on a shared GitHub runner. The iPhone V8
+  // path is still required by runtime.spec.js to use zero model requests.
+  timeout: 180_000,
   fullyParallel: false,
   workers: 1,
   reporter: [['line']],
