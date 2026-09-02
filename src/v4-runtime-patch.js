@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { AudioManager } from './audio/AudioManager.js';
 import { CharacterIKRig } from './animation/CharacterIKRig.js';
 import { TrueBodyRig } from './characters/TrueBodyRig.js';
+import { GrenadeController } from './gameplay/CombatSystems.js';
 import { installCyberLighting } from './rendering/CyberLighting.js';
 import { AdvancedFPSViewModel } from './weapons/AdvancedFPSViewModel.js';
 import { FPSViewModel } from './weapons/FPSViewModel.js';
@@ -9,6 +10,9 @@ import { FPSViewModel } from './weapons/FPSViewModel.js';
 const mobile = matchMedia('(any-pointer: coarse)').matches;
 let worldScene = null;
 let ballisticState = null;
+
+globalThis.__PROJECT_STRIKE_RUNTIME_STARTED__ = true;
+if (globalThis.__PROJECT_STRIKE_BOOT__) globalThis.__PROJECT_STRIKE_BOOT__.phase = 'v4-patch-ready';
 
 function createSocket(parent, name, position) {
   const socket = new THREE.Object3D();
@@ -96,11 +100,23 @@ function installGripSockets(view) {
 
 function ensureWeaponIK(view) {
   view._v4IK ||= new CharacterIKRig({ mobile });
+  const sockets = view.sockets || {};
+  const unchanged =
+    view._v4IKBoundArms === view.arms &&
+    view._v4IKBoundLeftSocket === sockets.leftGrip &&
+    view._v4IKBoundRightSocket === sockets.rightGrip;
+
+  if (unchanged && view.diagnostics.ik) return view.diagnostics.ik;
+
   const diagnostics = view._v4IK.bind({
     arms: view.arms,
     bones: view.bones,
-    sockets: view.sockets
+    sockets
   });
+
+  view._v4IKBoundArms = view.arms;
+  view._v4IKBoundLeftSocket = sockets.leftGrip;
+  view._v4IKBoundRightSocket = sockets.rightGrip;
   view.diagnostics.ik = diagnostics;
   globalThis.__PROJECT_STRIKE_IK__ = diagnostics;
   return diagnostics;
@@ -134,7 +150,7 @@ THREE.Scene.prototype.add = function (...objects) {
 const decodeArrayBuffer = AudioManager.prototype.decodeArrayBuffer;
 AudioManager.prototype.fetchDecode = async function (url) {
   const controller = new AbortController();
-  const timeoutMs = mobile ? 6000 : 8000;
+  const timeoutMs = mobile ? 5000 : 7000;
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, { signal: controller.signal });
@@ -143,6 +159,19 @@ AudioManager.prototype.fetchDecode = async function (url) {
   } finally {
     clearTimeout(timer);
   }
+};
+
+// Grenade models are optional presentation assets. Stage 3 historically
+// awaited both GLBs before enabling Deploy; start that warmup in parallel and
+// immediately return so missing/slow grenade files cannot hold the boot screen.
+const originalGrenadeInit = GrenadeController.prototype.init;
+GrenadeController.prototype.init = function (assets) {
+  if (!this._v4WarmupPromise) {
+    this._v4WarmupPromise = Promise.resolve()
+      .then(() => originalGrenadeInit.call(this, assets))
+      .catch(error => console.info('Optional grenade warmup recovered.', error));
+  }
+  return Promise.resolve(this);
 };
 
 const proto = FPSViewModel.prototype;
@@ -334,6 +363,7 @@ function publishDiagnostics() {
     weaponIK: true,
     footIK: true,
     ikSolver: 'Three.js CCDIKSolver',
+    nonBlockingGrenadeWarmup: true,
     ik: globalThis.__PROJECT_STRIKE_IK__ || null
   };
   return true;
