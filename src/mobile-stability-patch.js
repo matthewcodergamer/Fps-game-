@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { AssetManager } from './assets/AssetManager.js';
+import { RepositoryAudio } from './audio/RepositoryAudio.js';
 import { GrenadeController } from './gameplay/CombatSystems.js';
 import { FPSViewModel } from './weapons/FPSViewModel.js';
 
@@ -7,8 +8,10 @@ const ua = navigator.userAgent || '';
 const ios = /iPhone|iPad|iPod/i.test(ua);
 const coarse = matchMedia('(any-pointer: coarse)').matches;
 const mobileSafe = ios && coarse;
-const CRASH_KEY = 'project-strike-ios-restart-count-v7';
+const survivalMode = mobileSafe;
+const CRASH_KEY = 'project-strike-ios-restart-count-v8';
 let restartCount = 0;
+let blockedModelLoads = 0;
 
 if (mobileSafe) {
   try {
@@ -19,18 +22,19 @@ if (mobileSafe) {
 
 const emergency = mobileSafe && restartCount >= 2;
 globalThis.__PROJECT_STRIKE_MOBILE_SAFE__ = mobileSafe;
+globalThis.__PROJECT_STRIKE_IOS_SURVIVAL__ = survivalMode;
 globalThis.__PROJECT_STRIKE_EMERGENCY_MODE__ = emergency;
 globalThis.__PROJECT_STRIKE_CORE_READY__ = false;
 
-async function claimStreamingWorker() {
-  const state = { attempted: false, previous: null, controllerChanged: false };
+async function claimFreshWorker() {
+  const state = { attempted: false, previous: null, controllerChanged: false, version: 'v10' };
   if (!mobileSafe || !('serviceWorker' in navigator)) return state;
   state.attempted = true;
   state.previous = navigator.serviceWorker.controller?.scriptURL || null;
   try {
-    const registration = await navigator.serviceWorker.register('./service-worker.js?v=9');
+    const registration = await navigator.serviceWorker.register('./service-worker.js?v=10', { updateViaCache: 'none' });
     await registration.update();
-    if (state.previous && !state.previous.includes('v=9')) {
+    if (state.previous && !state.previous.includes('v=10')) {
       await Promise.race([
         new Promise(resolve => {
           const onChange = () => {
@@ -44,78 +48,35 @@ async function claimStreamingWorker() {
       ]);
     }
   } catch (error) {
-    console.info('V9 worker preflight unavailable; direct network loading remains active.', error);
+    console.info('V10 worker preflight unavailable; survival boot remains active.', error);
   }
   return state;
 }
 
-// If V8 is already controlling this tab, do not begin large GLB work until V9
-// has had a chance to install/claim the page. V8 cloned every GLB into Cache
-// Storage and could trigger an iOS process kill during the very first V7 visit.
-const workerUpgrade = await claimStreamingWorker();
-
-const allowedBuildings = emergency ? 2 : 3;
-const admittedBuildings = new Set();
-let decodeActive = 0;
-const decodeQueue = [];
-const decodeLimit = mobileSafe ? 1 : 3;
-
-function acquireDecodeSlot() {
-  if (decodeActive < decodeLimit) {
-    decodeActive++;
-    return Promise.resolve();
-  }
-  return new Promise(resolve => decodeQueue.push(resolve));
-}
-
-function releaseDecodeSlot() {
-  decodeActive = Math.max(0, decodeActive - 1);
-  const next = decodeQueue.shift();
-  if (next) {
-    decodeActive++;
-    next();
-  }
-}
-
-const parseModel = AssetManager.prototype.parseModel;
-AssetManager.prototype.parseModel = async function (...args) {
-  if (!mobileSafe) return parseModel.apply(this, args);
-  await acquireDecodeSlot();
-  try {
-    return await parseModel.apply(this, args);
-  } finally {
-    releaseDecodeSlot();
-  }
-};
-
+// The real iPhone 11 screenshots show Safari dying while decoding the optic GLB.
+// V8 therefore does not attempt *any* repository model decode on iOS. The
+// existing procedural arena, operators, weapon and arm recovery paths become
+// the authoritative first boot. Desktop keeps all repository models.
+const workerUpgrade = await claimFreshWorker();
+const modelExtension = /\.(?:glb|gltf|fbx)(?:[?#].*)?$/i;
 const loadModel = AssetManager.prototype.loadModel;
 AssetManager.prototype.loadModel = function (url, options = {}) {
   const value = String(url || '');
-  if (mobileSafe) {
-    if (/characters\/operators\/bamen_military_soldier_animated\.glb/i.test(value)) {
-      return Promise.reject(new Error('iOS memory governor: procedural operator fallback selected'));
-    }
-    if (/environment\/buildings\/kenney-industrial\/enterable\//i.test(value)) {
-      if (!admittedBuildings.has(value) && admittedBuildings.size >= allowedBuildings) {
-        return Promise.reject(new Error('iOS memory governor: distant building deferred'));
-      }
-      admittedBuildings.add(value);
-    }
-    // The repository cover/terrain GLBs are much larger than the enterable
-    // Kenney buildings. The arena already has collision/primitive street cover,
-    // so defer these multi-megabyte props on iPhone instead of spending the
-    // startup memory peak on decorative meshes.
-    if (options.world && /environment\/(?:cover|terrain)\//i.test(value)) {
-      return Promise.reject(new Error('iOS memory governor: heavy world prop deferred'));
-    }
+  if (survivalMode && modelExtension.test(value)) {
+    blockedModelLoads++;
+    globalThis.__PROJECT_STRIKE_BLOCKED_MODEL_LOADS__ = blockedModelLoads;
+    const error = new Error(`iOS survival boot: repository model deferred (${value.split('/').pop()})`);
+    error.name = 'IOSSurvivalModelDeferredError';
+    return Promise.reject(error);
   }
   return loadModel.call(this, url, options);
 };
 
+// Optics and grenade presentation assets have procedural fallbacks already.
 const loadAttachment = FPSViewModel.prototype.loadAttachment;
 FPSViewModel.prototype.loadAttachment = function (url) {
-  if (mobileSafe) {
-    this.diagnostics.attachment = { skipped: true, reason: 'ios-memory-budget', url };
+  if (survivalMode) {
+    this.diagnostics.attachment = { skipped: true, reason: 'ios-survival-zero-model-boot', url };
     return Promise.resolve(false);
   }
   return loadAttachment.call(this, url);
@@ -123,22 +84,42 @@ FPSViewModel.prototype.loadAttachment = function (url) {
 
 const grenadeInit = GrenadeController.prototype.init;
 GrenadeController.prototype.init = function (assets) {
-  if (mobileSafe) {
-    this._v7DeferredAssets = assets;
+  if (survivalMode) {
+    this._v8DeferredAssets = assets;
     return Promise.resolve(this);
   }
   return grenadeInit.call(this, assets);
 };
 
-if (mobileSafe) {
+// Do not pre-decode audio banks during the vulnerable startup transition.
+// AudioContext still unlocks from the user's Deploy gesture; individual sounds
+// can be loaded lazily later without holding a model decoder graph at the same time.
+const repositoryPrewarm = RepositoryAudio.prototype.prewarm;
+RepositoryAudio.prototype.prewarm = function (...args) {
+  if (survivalMode) {
+    return Promise.resolve({ weapon: 0, collision: 0, explosions: 0, weapons: 0, indexed: this.indexedFiles, warming: true, survivalMode: true });
+  }
+  return repositoryPrewarm.apply(this, args);
+};
+
+if (survivalMode) {
   const setPixelRatio = THREE.WebGLRenderer.prototype.setPixelRatio;
   THREE.WebGLRenderer.prototype.setPixelRatio = function (value) {
-    const cap = emergency ? .72 : .88;
+    const cap = emergency ? .60 : .70;
     return setPixelRatio.call(this, Math.min(Number(value) || 1, cap));
   };
 
+  // PMREM allocates multiple offscreen cube faces. Direct lights are retained.
   THREE.PMREMGenerator.prototype.fromScene = function () {
     return { texture: null, dispose() {} };
+  };
+
+  // Disable shadow-map allocation before the first real render. Arena meshes and
+  // lighting remain visible, but Safari does not need a 1024px shadow texture.
+  const render = THREE.WebGLRenderer.prototype.render;
+  THREE.WebGLRenderer.prototype.render = function (...args) {
+    if (this.shadowMap) this.shadowMap.enabled = false;
+    return render.apply(this, args);
   };
 }
 
@@ -149,6 +130,24 @@ const readyTimer = setInterval(() => {
   clearInterval(readyTimer);
 }, 80);
 setTimeout(() => clearInterval(readyTimer), 60_000);
+
+// Publish V8 after the V4 diagnostics object has been created. This also gives
+// the user a visible freshness marker so a stale V6 page is obvious immediately.
+const diagnosticTimer = setInterval(() => {
+  const diagnostics = globalThis.__PROJECT_STRIKE_DIAGNOSTICS__;
+  if (!diagnostics) return;
+  Object.assign(diagnostics, {
+    runtime: 'v8',
+    iosSurvivalBoot: survivalMode,
+    zeroModelStartup: survivalMode,
+    largeAssetCacheDisabled: true,
+    productionServiceWorker: 'v10'
+  });
+  const badge = document.querySelector('#stageBadge');
+  if (badge) badge.textContent = 'V8';
+  clearInterval(diagnosticTimer);
+}, 100);
+setTimeout(() => clearInterval(diagnosticTimer), 60_000);
 
 const stableTimer = setInterval(() => {
   const boot = document.querySelector('#boot');
@@ -163,15 +162,22 @@ setTimeout(() => clearInterval(stableTimer), 120_000);
 globalThis.__PROJECT_STRIKE_MOBILE_STABILITY__ = {
   ios,
   mobileSafe,
+  survivalMode,
   emergency,
   restartCount,
   workerUpgrade,
-  maxConcurrentModelDecodes: decodeLimit,
-  initialEnterableBuildings: mobileSafe ? allowedBuildings : 8,
-  operatorFallback: mobileSafe,
-  opticFallback: mobileSafe,
-  grenadeFallback: mobileSafe,
-  heavyWorldPropsDeferred: mobileSafe,
-  pmremDisabled: mobileSafe,
-  largeAssetCacheDisabled: true
+  maxConcurrentModelDecodes: survivalMode ? 0 : 3,
+  initialRepositoryModelLoads: survivalMode ? 0 : null,
+  initialEnterableBuildings: survivalMode ? 0 : 8,
+  operatorFallback: survivalMode,
+  viewModelFallback: survivalMode,
+  opticFallback: survivalMode,
+  grenadeFallback: survivalMode,
+  heavyWorldPropsDeferred: survivalMode,
+  pmremDisabled: survivalMode,
+  shadowMapsDisabled: survivalMode,
+  audioPrewarmDisabled: survivalMode,
+  renderScaleCap: survivalMode ? (emergency ? .60 : .70) : null,
+  largeAssetCacheDisabled: true,
+  blockedModelLoads
 };
