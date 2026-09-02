@@ -1,10 +1,12 @@
 import * as THREE from 'three';
+import { AudioManager } from './audio/AudioManager.js';
 import { AAAFeelSystem } from './gameplay/AAAFeelSystem.js';
 import { CombatEffects } from './gameplay/CombatSystems.js';
 import { FPSViewModel } from './weapons/FPSViewModel.js';
 
 const mobile = matchMedia('(any-pointer: coarse)').matches;
 const feelByView = new WeakMap();
+let activeAudio = null;
 
 function feel(view) {
   if (!feelByView.has(view)) feelByView.set(view, new AAAFeelSystem(view, { mobile }));
@@ -39,6 +41,13 @@ function routeReloadIK(view) {
     moveIKTarget(view, 'leftGrip');
   }
 }
+
+const audioUnlock = AudioManager.prototype.unlock;
+AudioManager.prototype.unlock = async function (...args) {
+  const result = await audioUnlock.apply(this, args);
+  activeAudio = this;
+  return result;
+};
 
 const proto = FPSViewModel.prototype;
 const baseUpdate = proto.update;
@@ -90,11 +99,26 @@ proto.update = function (dt, state = {}) {
   feel(this).update(dt, state);
 };
 
+const MATERIAL_AUDIO = {
+  concrete: { gain: .075, rate: .78 },
+  metal: { gain: .09, rate: 1.22 },
+  wood: { gain: .07, rate: .91 },
+  glass: { gain: .085, rate: 1.45 },
+  body: { gain: .045, rate: .7 }
+};
+
 const effectsProto = CombatEffects.prototype;
 const baseImpact = effectsProto.impact;
 effectsProto.impact = function (point, normal, options = {}) {
   baseImpact.call(this, point, normal, options);
   const kind = options.kind || 'concrete';
+  const sound = MATERIAL_AUDIO[kind] || MATERIAL_AUDIO.concrete;
+  activeAudio?.playResident?.('collision', {
+    gain: sound.gain,
+    rate: sound.rate * (.94 + Math.random() * .12),
+    position: point
+  });
+
   const count = this.mobile ? 2 : 5;
   this._aaaChipGeo ||= new THREE.IcosahedronGeometry(.012, 0);
   this._aaaSplinterGeo ||= new THREE.BoxGeometry(.008, .008, .065);
@@ -146,5 +170,6 @@ globalThis.__PROJECT_STRIKE_AAA__ = {
   tacticalReload: true,
   emptyReload: true,
   reloadIKRetargeting: true,
-  materialImpactDebris: true
+  materialImpactDebris: true,
+  materialImpactAudio: true
 };
