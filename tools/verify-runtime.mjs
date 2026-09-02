@@ -5,10 +5,6 @@ const publicRoot = path.resolve('public');
 const assetRoot = path.join(publicRoot, 'game-assets');
 const warnings = [];
 
-// This asset predates the recovery layer and is already committed with a
-// truncated BIN payload. It is optional at runtime and the weapon loader has a
-// procedural recovery path, so validation records it instead of blocking every
-// unrelated deployment. Any new length mismatch still fails the build.
 const recoverableLengthMismatch = new Set([
   'models/weapons/shotguns/remington_870_police_magnum_12_gauge_shotgun.glb'
 ]);
@@ -34,37 +30,26 @@ function inspectGLB(file) {
     if (bytes < 20 || header.subarray(0, 4).toString('ascii') !== 'glTF') {
       throw new Error(`Invalid GLB header: ${relative}`);
     }
-
     const version = header.readUInt32LE(4);
     if (version !== 2) throw new Error(`Unsupported GLB version ${version}: ${relative}`);
-
     const declaredLength = header.readUInt32LE(8);
     const actualLength = fs.statSync(file).size;
     if (declaredLength !== actualLength) {
       if (!recoverableLengthMismatch.has(relative)) {
         throw new Error(`GLB length mismatch: ${relative} (${declaredLength} != ${actualLength})`);
       }
-      warnings.push(
-        `Recoverable optional GLB uses procedural fallback: ${relative} ` +
-        `(${declaredLength} declared, ${actualLength} bytes present)`
-      );
+      warnings.push(`Recoverable optional GLB uses procedural fallback: ${relative} (${declaredLength} declared, ${actualLength} bytes present)`);
     }
-
     const jsonLength = header.readUInt32LE(12);
     const jsonType = header.readUInt32LE(16);
     if (jsonType !== 0x4e4f534a) throw new Error(`GLB first chunk is not JSON: ${relative}`);
-    if (20 + jsonLength > actualLength) {
-      throw new Error(`GLB JSON chunk is truncated: ${relative}`);
-    }
-
+    if (20 + jsonLength > actualLength) throw new Error(`GLB JSON chunk is truncated: ${relative}`);
     const jsonBuffer = Buffer.alloc(jsonLength);
     fs.readSync(handle, jsonBuffer, 0, jsonLength, 20);
     const json = JSON.parse(jsonBuffer.toString('utf8').replace(/\u0000+$/g, '').trim());
-
     if ((json.extensionsRequired || []).includes('KHR_draco_mesh_compression')) {
       throw new Error(`Runtime GLB requires Draco but AssetManager does not install DRACOLoader: ${relative}`);
     }
-
     const external = [];
     for (const buffer of json.buffers || []) if (buffer.uri) external.push(buffer.uri);
     for (const image of json.images || []) if (image.uri) external.push(image.uri);
@@ -72,11 +57,8 @@ function inspectGLB(file) {
       if (/^(?:data:|https?:|blob:)/i.test(uri)) continue;
       const decoded = decodeURIComponent(uri.split(/[?#]/)[0]);
       const referenced = path.resolve(path.dirname(file), decoded);
-      if (!fs.existsSync(referenced)) {
-        throw new Error(`Missing GLB dependency ${uri} referenced by ${relative}`);
-      }
+      if (!fs.existsSync(referenced)) throw new Error(`Missing GLB dependency ${uri} referenced by ${relative}`);
     }
-
     return json.extensionsRequired || [];
   } finally {
     fs.closeSync(handle);
@@ -85,49 +67,48 @@ function inspectGLB(file) {
 
 const publicWorkerPath = path.join(publicRoot, 'service-worker.js');
 const sourceWorkerPath = path.resolve('service-worker.js');
-assertFile(publicWorkerPath, 'production service worker: public/service-worker.js');
-assertFile(sourceWorkerPath, 'source-host service worker: service-worker.js');
-assertFile(path.resolve('src/animation/CharacterIKRig.js'), 'weapon IK module: src/animation/CharacterIKRig.js');
-assertFile(path.resolve('src/gameplay/AAAFeelSystem.js'), 'AAA feel module: src/gameplay/AAAFeelSystem.js');
-assertFile(path.resolve('src/aaa-runtime-patch.js'), 'AAA integration patch: src/aaa-runtime-patch.js');
+for (const [file, label] of [
+  [publicWorkerPath, 'production service worker'],
+  [sourceWorkerPath, 'source-host service worker'],
+  [path.resolve('src/animation/CharacterIKRig.js'), 'weapon IK module'],
+  [path.resolve('src/gameplay/AAAFeelSystem.js'), 'AAA feel module'],
+  [path.resolve('src/gameplay/PhysicalReactionSystem.js'), 'physical reaction module'],
+  [path.resolve('src/mobile-stability-patch.js'), 'iOS stability patch'],
+  [path.resolve('src/aaa-runtime-patch.js'), 'AAA integration patch'],
+  [path.resolve('src/gore-runtime-patch.js'), 'physical reaction integration patch']
+]) assertFile(file, label);
 
 const index = fs.readFileSync(path.resolve('index.html'), 'utf8');
 const entry = fs.readFileSync(path.resolve('src/main-v4.js'), 'utf8');
 const publicWorker = fs.readFileSync(publicWorkerPath, 'utf8');
 const sourceWorker = fs.readFileSync(sourceWorkerPath, 'utf8');
+const assetManager = fs.readFileSync(path.resolve('src/assets/AssetManager.js'), 'utf8');
 
 if (!index.includes('src/main-v4.js')) throw new Error('index.html is not booting src/main-v4.js');
-if (!index.includes("./service-worker.js?v=8")) {
-  throw new Error('index.html is not registering the V8 service worker');
+if (!index.includes("./service-worker.js?v=9")) throw new Error('index.html is not registering the V9 service worker');
+if (!index.includes('__PROJECT_STRIKE_ENTRY_LOADED__')) throw new Error('index.html is missing the early JavaScript boot watchdog');
+if (!index.includes('type="importmap"') || !index.includes('three/addons/')) throw new Error('index.html is missing the raw-source Three.js import map recovery');
+if (!index.includes('__PROJECT_STRIKE_SOURCE_MODE__') || !index.includes('/public/game-assets/')) throw new Error('index.html is missing raw-source game asset URL recovery');
+for (const modulePath of [
+  "await import('./mobile-stability-patch.js')",
+  "await import('./v4-runtime-patch.js')",
+  "await import('./aaa-runtime-patch.js')",
+  "await import('./gore-runtime-patch.js')"
+]) {
+  if (!entry.includes(modulePath)) throw new Error(`main-v4.js is missing ${modulePath}`);
 }
-if (!index.includes('__PROJECT_STRIKE_ENTRY_LOADED__')) {
-  throw new Error('index.html is missing the early JavaScript boot watchdog');
+if (publicWorker !== sourceWorker) throw new Error('Root and public service workers must remain identical.');
+if (!publicWorker.includes("project-strike-v9-shell") || !publicWorker.includes('stream GLBs/textures/audio directly')) {
+  throw new Error('V9 service worker is missing the large-asset streaming rule.');
 }
-if (!index.includes('type="importmap"') || !index.includes('three/addons/')) {
-  throw new Error('index.html is missing the raw-source Three.js import map recovery');
-}
-if (!index.includes('__PROJECT_STRIKE_SOURCE_MODE__') || !index.includes('/public/game-assets/')) {
-  throw new Error('index.html is missing raw-source game asset URL recovery');
-}
-if (!entry.includes("await import('./v4-runtime-patch.js')")) {
-  throw new Error('main-v4.js is not loading the V4 IK/recovery layer');
-}
-if (!entry.includes("await import('./aaa-runtime-patch.js')")) {
-  throw new Error('main-v4.js is not loading the V6 AAA feel layer');
-}
-if (publicWorker !== sourceWorker) {
-  throw new Error('Root and public service workers must remain identical for source and Pages hosting.');
-}
-if (!publicWorker.includes("project-strike-v8-runtime") || !publicWorker.includes('/public/game-assets/')) {
-  throw new Error('V8 service worker is missing cache or source-host asset recovery.');
+if (!assetManager.includes('this.cache.delete(resolvedUrl)') || !assetManager.includes('Math.min(loaded, total)')) {
+  throw new Error('AssetManager is missing mobile cache eviction or progress clamping.');
 }
 
 const glbs = walk(assetRoot).filter(file => file.toLowerCase().endsWith('.glb'));
 if (!glbs.length) throw new Error('No runtime GLB files found.');
 const requiredExtensions = new Set();
-for (const file of glbs) {
-  for (const extension of inspectGLB(file)) requiredExtensions.add(extension);
-}
+for (const file of glbs) for (const extension of inspectGLB(file)) requiredExtensions.add(extension);
 
 const requiredModels = [
   'models/characters/first_person_arms/free_fps_arms_gameready_-_rigged.glb',
@@ -140,21 +121,10 @@ const requiredModels = [
 ];
 for (const relative of requiredModels) {
   assertFile(path.join(assetRoot, relative), `runtime model: ${relative}`);
-  if (recoverableLengthMismatch.has(relative)) {
-    throw new Error(`Required runtime model cannot be marked recoverable: ${relative}`);
-  }
+  if (recoverableLengthMismatch.has(relative)) throw new Error(`Required runtime model cannot be marked recoverable: ${relative}`);
 }
 
-const requiredBanks = [
-  'lmg_combat',
-  'ptl_pistol',
-  'lmg_mg_player',
-  'smg_smg',
-  'sht_pump',
-  'snp_rifle',
-  'collision',
-  'explosions'
-];
+const requiredBanks = ['lmg_combat', 'ptl_pistol', 'lmg_mg_player', 'smg_smg', 'sht_pump', 'snp_rifle', 'collision', 'explosions'];
 const manifestPath = path.join(assetRoot, 'audio/audio-manifest.json');
 assertFile(manifestPath, 'audio manifest');
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
@@ -164,19 +134,13 @@ const diskFiles = walk(path.join(assetRoot, 'audio'))
 const indexedFiles = new Set((manifest.files || []).map(file => file.path));
 const missing = diskFiles.filter(file => !indexedFiles.has(file));
 if (missing.length) throw new Error(`Audio manifest is missing ${missing.length} WAV files. Run npm run audio:manifest.`);
-if (indexedFiles.size !== diskFiles.length) {
-  throw new Error(`Audio manifest count mismatch: ${indexedFiles.size} indexed, ${diskFiles.length} on disk.`);
-}
+if (indexedFiles.size !== diskFiles.length) throw new Error(`Audio manifest count mismatch: ${indexedFiles.size} indexed, ${diskFiles.length} on disk.`);
 const banks = new Set((manifest.files || []).map(file => file.bank));
-for (const bank of requiredBanks) {
-  if (!banks.has(bank)) throw new Error(`Audio manifest is missing required bank: ${bank}`);
-}
+for (const bank of requiredBanks) if (!banks.has(bank)) throw new Error(`Audio manifest is missing required bank: ${bank}`);
 
 for (const warning of warnings) console.warn(`Runtime warning: ${warning}`);
-
 console.log(
   `Runtime verified: ${glbs.length} GLBs inspected, ${diskFiles.length} WAV files indexed, ` +
-  `CCD IK + AAA feel modules present, raw-source Three.js/asset recovery present, V8 dual service worker present, ` +
-  `required GLB extensions: ${[...requiredExtensions].sort().join(', ') || 'none'}, ` +
-  `recoverable optional assets: ${warnings.length}.`
+  `CCD IK + AAA feel + physical reactions present, V9 large-asset streaming and iOS memory guard present, ` +
+  `required GLB extensions: ${[...requiredExtensions].sort().join(', ') || 'none'}, recoverable optional assets: ${warnings.length}.`
 );
