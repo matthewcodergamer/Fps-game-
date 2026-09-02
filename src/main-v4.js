@@ -29,11 +29,17 @@ const fatalTimer = setTimeout(() => {
 
 (async () => {
   try {
+    if (status) status.textContent = 'Applying iPhone memory guard…';
+    await import('./mobile-stability-patch.js');
+
     if (status) status.textContent = 'Loading IK and gameplay recovery…';
     await import('./v4-runtime-patch.js');
 
     if (status) status.textContent = 'Loading AAA weapon feel…';
     await import('./aaa-runtime-patch.js');
+
+    if (status) status.textContent = 'Loading physical hit reactions…';
+    await import('./gore-runtime-patch.js');
 
     if (status) status.textContent = 'Starting WebGL renderer…';
     globalThis.__PROJECT_STRIKE_BOOT__.phase = 'stage3-import';
