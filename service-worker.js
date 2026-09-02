@@ -41,6 +41,8 @@ async function fetchWithSourceFallback(request, { fresh = false } = {}) {
 }
 
 async function freshNavigation(request) {
+  // Never satisfy navigation from the old Project Strike cache. This is the
+  // stale-V6/V7 recovery path for iPhone Safari.
   return fetchWithSourceFallback(request, { fresh: true });
 }
 
@@ -63,6 +65,8 @@ self.addEventListener('fetch', event => {
   }
 
   if (url.pathname.includes('/game-assets/') || url.pathname.includes('/public/game-assets/')) {
+    // V10 rule: model/audio/texture responses are always streamed directly.
+    // They are never cloned into Cache Storage.
     event.respondWith(fetchWithSourceFallback(request, { fresh: true }));
     return;
   }
