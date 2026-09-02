@@ -15,16 +15,16 @@
   <canvas id="game"></canvas>
 
   <div id="boot" class="panel boot">
-    <div class="brandRow"><div class="strikeMark">PS</div><div><div class="eyebrow">PROJECT STRIKE</div><div class="buildTag">V4 RECOVERY BUILD · GUARDED WEBGL2</div></div></div>
+    <div class="brandRow"><div class="strikeMark">PS</div><div><div class="eyebrow">PROJECT STRIKE</div><div class="buildTag">V5 IK + FAST BOOT · GUARDED WEBGL2</div></div></div>
     <h1>PROJECT<br>STRIKE</h1>
     <p class="lead">Repository weapons and rigged arms, true first-person body geometry, barrel-origin ballistics, weighted inertia and jerk response, animated operators, real industrial buildings, rain and mobile-friendly cyberpunk bounce-light haze.</p>
-    <div id="renderStatus" class="renderStatus">Detecting renderer…</div>
+    <div id="renderStatus" class="renderStatus">Starting runtime bootstrap…</div>
     <div class="boot-actions">
       <button id="playBtn" class="primary" disabled>LOADING</button>
       <button id="roadmapBtn" class="secondary">BUILD STATUS</button>
     </div>
     <div id="audioStatus" class="muted">Repository audio unlocks after you press Deploy, as required by Safari and desktop browsers.</div>
-    <div class="systems"><span>WEBGL2 STABLE</span><span>THREE.JS 0.185</span><span>GLB + FBX TRANSLATION</span><span>TRUE BODY</span><span>BARREL BALLISTICS</span><span>ASSET WATCHDOG</span><span>NEON PBR</span><span>1,990 WAV FILES</span><span>GAMEPAD</span></div>
+    <div class="systems"><span>WEBGL2 STABLE</span><span>THREE.JS 0.185</span><span>CCD IK</span><span>GLB + FBX TRANSLATION</span><span>TRUE BODY</span><span>BARREL BALLISTICS</span><span>ASSET WATCHDOG</span><span>NEON PBR</span><span>1,990 WAV FILES</span><span>GAMEPAD</span></div>
   </div>
 
   <aside id="roadmap" class="roadmap hidden"><div class="roadmapHead"><div><div class="eyebrow">DEVELOPMENT</div><h2>BUILD ROADMAP</h2></div><button id="closeRoadmap">×</button></div><div id="stageList"></div></aside>
@@ -35,7 +35,7 @@
 
   <div id="hud" class="hidden">
     <div id="crosshair"><span></span><span></span><span></span><span></span></div>
-    <div class="topbar"><div><span id="fps">60 FPS</span><span id="controllerStatus" class="controlMode">TOUCH/MOUSE</span></div><div id="statusText">READY</div><div id="stageBadge">V4</div></div>
+    <div class="topbar"><div><span id="fps">60 FPS</span><span id="controllerStatus" class="controlMode">TOUCH/MOUSE</span></div><div id="statusText">READY</div><div id="stageBadge">V5</div></div>
     <div id="weaponName">M4A1</div><div class="ammo"><strong id="ammo">30</strong><span>/ 120</span></div><div id="hitmarker">×</div>
     <div id="leftPad" class="touchPad"><div class="stick"></div></div><div id="lookZone"></div>
     <div class="buttons">
@@ -46,10 +46,29 @@
     </div>
   </div>
 </div>
+<script>
+window.__PROJECT_STRIKE_ENTRY_LOADED__ = false;
+setTimeout(() => {
+  if (window.__PROJECT_STRIKE_ENTRY_LOADED__) return;
+  const status = document.querySelector('#renderStatus');
+  if (status) status.textContent = 'JavaScript bundle is loading slowly…';
+}, 2500);
+setTimeout(() => {
+  if (window.__PROJECT_STRIKE_ENTRY_LOADED__) return;
+  const status = document.querySelector('#renderStatus');
+  const button = document.querySelector('#playBtn');
+  if (status) status.textContent = 'Runtime bundle did not load · tap reload';
+  if (button) {
+    button.disabled = false;
+    button.textContent = 'RELOAD';
+    button.onclick = () => location.reload();
+  }
+}, 10000);
+</script>
 <script type="module" src="src/main-v4.js"></script>
 <script>
 if ('serviceWorker' in navigator) {
-  addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js?v=6')
+  addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js?v=7')
     .then(registration => registration.update())
     .catch(error => console.info('Service worker unavailable; online runtime is unaffected.', error)));
 }
