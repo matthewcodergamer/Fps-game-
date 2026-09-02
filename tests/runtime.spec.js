@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { expect, test } from '@playwright/test';
 
-test('boots, renders repository viewmodel, and enters gameplay', async ({ page }, testInfo) => {
+test('boots V4, renders repository viewmodel, and enters gameplay', async ({ page }, testInfo) => {
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
   page.on('console', message => {
@@ -12,6 +12,14 @@ test('boots, renders repository viewmodel, and enters gameplay', async ({ page }
   const playButton = page.locator('#playBtn');
   await expect(playButton).toBeEnabled({ timeout: 60_000 });
   await expect(page.locator('#renderStatus')).toContainText('WebGL2 stable');
+  await expect(page.locator('#stageBadge')).toContainText('V4');
+
+  const bootDiagnostics = await page.evaluate(() => window.__PROJECT_STRIKE_DIAGNOSTICS__);
+  expect(bootDiagnostics?.runtime).toBe('v4');
+  expect(bootDiagnostics?.guardedAssetLoads).toBe(true);
+  expect(bootDiagnostics?.trueBody).toBe(true);
+  expect(bootDiagnostics?.barrelBallistics).toBe(true);
+
   await playButton.click();
   await expect(page.locator('#hud')).toBeVisible();
   await expect(page.locator('#weaponName')).toContainText('M4A1');

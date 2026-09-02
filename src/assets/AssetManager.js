@@ -25,16 +25,25 @@ function cloneMaterial(material, anisotropy) {
   return next;
 }
 
+function timeoutError(url, timeoutMs) {
+  const error = new Error(`Timed out after ${Math.round(timeoutMs / 100) / 10}s while loading ${url}`);
+  error.name = 'AssetTimeoutError';
+  return error;
+}
+
 /**
  * Runtime translation layer for repository models.
  *
  * Production assets use GLB, while FBX is supported for source inspection and
  * development fallbacks. Both paths return the same normalized asset contract.
+ * Every network/model wait is bounded so one broken response cannot hold the
+ * entire boot screen forever.
  */
 export class AssetManager {
-  constructor(renderer, { onProgress = null } = {}) {
+  constructor(renderer, { onProgress = null, timeoutMs = 12000 } = {}) {
     this.renderer = renderer;
     this.onProgress = onProgress;
+    this.timeoutMs = timeoutMs;
     this.cache = new Map();
     this.gltf = new GLTFLoader();
     this.gltf.setMeshoptDecoder(MeshoptDecoder);
@@ -42,19 +51,30 @@ export class AssetManager {
     this.anisotropy = Math.min(8, renderer?.capabilities?.getMaxAnisotropy?.() || 1);
   }
 
-  async parseModel(url) {
+  withTimeout(promise, url, timeoutMs = this.timeoutMs) {
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return promise;
+    let timer = 0;
+    const guard = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(timeoutError(url, timeoutMs)), timeoutMs);
+    });
+    return Promise.race([promise, guard]).finally(() => clearTimeout(timer));
+  }
+
+  async parseModel(url, { timeoutMs = this.timeoutMs } = {}) {
     const ext = extensionOf(url);
     this.onProgress?.({ type: 'model', url, state: 'loading' });
     let asset;
     if (ext === 'glb' || ext === 'gltf') {
-      const gltf = await this.gltf.loadAsync(url, event => {
+      const pending = this.gltf.loadAsync(url, event => {
         this.onProgress?.({ type: 'model', url, state: 'loading', loaded: event.loaded, total: event.total || 0 });
       });
+      const gltf = await this.withTimeout(pending, url, timeoutMs);
       asset = { ...gltf, scene: gltf.scene, animations: gltf.animations || [], format: ext };
     } else if (ext === 'fbx') {
-      const scene = await this.fbx.loadAsync(url, event => {
+      const pending = this.fbx.loadAsync(url, event => {
         this.onProgress?.({ type: 'model', url, state: 'loading', loaded: event.loaded, total: event.total || 0 });
       });
+      const scene = await this.withTimeout(pending, url, timeoutMs);
       asset = { scene, animations: scene.animations || [], format: 'fbx', parser: null };
     } else {
       throw new Error(`Unsupported model format for ${url}. Expected GLB, glTF, or FBX.`);
@@ -111,16 +131,16 @@ export class AssetManager {
     return root;
   }
 
-  async loadModel(url, { clone = false, world = false } = {}) {
+  async loadModel(url, { clone = false, world = false, timeoutMs = this.timeoutMs } = {}) {
     if (!this.cache.has(url)) {
-      const pending = this.parseModel(url).catch(error => {
+      const pending = this.parseModel(url, { timeoutMs }).catch(error => {
         this.cache.delete(url);
         this.onProgress?.({ type: 'model', url, state: 'error', error });
         throw error;
       });
       this.cache.set(url, pending);
     }
-    const source = await this.cache.get(url);
+    const source = await this.withTimeout(this.cache.get(url), url, timeoutMs);
     if (!clone) return source;
     const scene = this.prepare(skeletonClone(source.scene), { world });
     return { ...source, scene, animations: source.animations.map(clip => clip.clone()) };
@@ -142,14 +162,25 @@ export class AssetManager {
     return this.loadModel(url, options);
   }
 
-  async loadJSON(url) {
+  async loadJSON(url, { timeoutMs = this.timeoutMs } = {}) {
     if (!this.cache.has(url)) {
-      this.cache.set(url, fetch(url, { cache: 'no-cache' }).then(response => {
-        if (!response.ok) throw new Error(`${response.status} ${url}`);
-        return response.json();
-      }));
+      const pending = (async () => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(timeoutError(url, timeoutMs)), timeoutMs);
+        try {
+          const response = await fetch(url, { cache: 'no-cache', signal: controller.signal });
+          if (!response.ok) throw new Error(`${response.status} ${url}`);
+          return response.json();
+        } finally {
+          clearTimeout(timer);
+        }
+      })().catch(error => {
+        this.cache.delete(url);
+        throw error;
+      });
+      this.cache.set(url, pending);
     }
-    return this.cache.get(url);
+    return this.withTimeout(this.cache.get(url), url, timeoutMs);
   }
 
   dispose() {
