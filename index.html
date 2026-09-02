@@ -9,22 +9,30 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="styles.css">
   <title>Project Strike</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/"
+    }
+  }
+  </script>
 </head>
 <body>
 <div id="app">
   <canvas id="game"></canvas>
 
   <div id="boot" class="panel boot">
-    <div class="brandRow"><div class="strikeMark">PS</div><div><div class="eyebrow">PROJECT STRIKE</div><div class="buildTag">V5 IK + FAST BOOT · GUARDED WEBGL2</div></div></div>
+    <div class="brandRow"><div class="strikeMark">PS</div><div><div class="eyebrow">PROJECT STRIKE</div><div class="buildTag">V6 AAA FEEL + IK · GUARDED WEBGL2</div></div></div>
     <h1>PROJECT<br>STRIKE</h1>
-    <p class="lead">Repository weapons and rigged arms, true first-person body geometry, barrel-origin ballistics, weighted inertia and jerk response, animated operators, real industrial buildings, rain and mobile-friendly cyberpunk bounce-light haze.</p>
+    <p class="lead">Repository weapons and rigged arms, CCD hand IK, terrain foot placement, split camera/gun recoil, free-aim inertia, tactical and empty reload states, barrel-origin ballistics, animated operators, real industrial buildings and mobile-scalable cyberpunk lighting.</p>
     <div id="renderStatus" class="renderStatus">Starting runtime bootstrap…</div>
     <div class="boot-actions">
       <button id="playBtn" class="primary" disabled>LOADING</button>
       <button id="roadmapBtn" class="secondary">BUILD STATUS</button>
     </div>
     <div id="audioStatus" class="muted">Repository audio unlocks after you press Deploy, as required by Safari and desktop browsers.</div>
-    <div class="systems"><span>WEBGL2 STABLE</span><span>THREE.JS 0.185</span><span>CCD IK</span><span>GLB + FBX TRANSLATION</span><span>TRUE BODY</span><span>BARREL BALLISTICS</span><span>ASSET WATCHDOG</span><span>NEON PBR</span><span>1,990 WAV FILES</span><span>GAMEPAD</span></div>
+    <div class="systems"><span>WEBGL2 STABLE</span><span>THREE.JS 0.185</span><span>CCD IK</span><span>FREE AIM</span><span>SPRING RECOIL</span><span>TACTICAL RELOAD</span><span>EMPTY RELOAD</span><span>TRUE BODY</span><span>BARREL BALLISTICS</span><span>NEON PBR</span><span>1,990 WAV FILES</span><span>GAMEPAD</span></div>
   </div>
 
   <aside id="roadmap" class="roadmap hidden"><div class="roadmapHead"><div><div class="eyebrow">DEVELOPMENT</div><h2>BUILD ROADMAP</h2></div><button id="closeRoadmap">×</button></div><div id="stageList"></div></aside>
@@ -35,7 +43,7 @@
 
   <div id="hud" class="hidden">
     <div id="crosshair"><span></span><span></span><span></span><span></span></div>
-    <div class="topbar"><div><span id="fps">60 FPS</span><span id="controllerStatus" class="controlMode">TOUCH/MOUSE</span></div><div id="statusText">READY</div><div id="stageBadge">V5</div></div>
+    <div class="topbar"><div><span id="fps">60 FPS</span><span id="controllerStatus" class="controlMode">TOUCH/MOUSE</span></div><div id="statusText">READY</div><div id="stageBadge">V6</div></div>
     <div id="weaponName">M4A1</div><div class="ammo"><strong id="ammo">30</strong><span>/ 120</span></div><div id="hitmarker">×</div>
     <div id="leftPad" class="touchPad"><div class="stick"></div></div><div id="lookZone"></div>
     <div class="buttons">
@@ -67,8 +75,38 @@ setTimeout(() => {
 </script>
 <script type="module" src="src/main-v4.js"></script>
 <script>
+(() => {
+  const sourceEntry = [...document.querySelectorAll('script[type="module"][src]')]
+    .some(script => /(?:^|\/)src\/main-v4\.js(?:[?#]|$)/.test(script.getAttribute('src') || ''));
+  window.__PROJECT_STRIKE_SOURCE_MODE__ = sourceEntry;
+  if (!sourceEntry || !window.fetch) return;
+
+  // When somebody opens the repository HTML directly instead of the Vite Pages
+  // artifact, Three.js modules still work through the import map above and all
+  // runtime asset requests are transparently mapped to public/game-assets/.
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = (input, init) => {
+    try {
+      const value = input instanceof Request ? input.url : String(input);
+      const url = new URL(value, document.baseURI);
+      if (
+        url.origin === location.origin &&
+        url.pathname.includes('/game-assets/') &&
+        !url.pathname.includes('/public/game-assets/')
+      ) {
+        url.pathname = url.pathname.replace('/game-assets/', '/public/game-assets/');
+        input = input instanceof Request ? new Request(url.href, input) : url.href;
+      }
+    } catch (error) {
+      console.info('Source-mode asset URL mapping skipped.', error);
+    }
+    return nativeFetch(input, init);
+  };
+})();
+</script>
+<script>
 if ('serviceWorker' in navigator) {
-  addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js?v=7')
+  addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js?v=8')
     .then(registration => registration.update())
     .catch(error => console.info('Service worker unavailable; online runtime is unaffected.', error)));
 }
