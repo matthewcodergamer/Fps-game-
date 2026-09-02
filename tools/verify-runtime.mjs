@@ -5,7 +5,7 @@ const publicRoot = path.resolve('public');
 const assetRoot = path.join(publicRoot, 'game-assets');
 const warnings = [];
 
-// This asset predates the V4 recovery layer and is already committed with a
+// This asset predates the recovery layer and is already committed with a
 // truncated BIN payload. It is optional at runtime and the weapon loader has a
 // procedural recovery path, so validation records it instead of blocking every
 // unrelated deployment. Any new length mismatch still fails the build.
@@ -83,20 +83,43 @@ function inspectGLB(file) {
   }
 }
 
-assertFile(path.join(publicRoot, 'service-worker.js'), 'production service worker: public/service-worker.js');
+const publicWorkerPath = path.join(publicRoot, 'service-worker.js');
+const sourceWorkerPath = path.resolve('service-worker.js');
+assertFile(publicWorkerPath, 'production service worker: public/service-worker.js');
+assertFile(sourceWorkerPath, 'source-host service worker: service-worker.js');
 assertFile(path.resolve('src/animation/CharacterIKRig.js'), 'weapon IK module: src/animation/CharacterIKRig.js');
+assertFile(path.resolve('src/gameplay/AAAFeelSystem.js'), 'AAA feel module: src/gameplay/AAAFeelSystem.js');
+assertFile(path.resolve('src/aaa-runtime-patch.js'), 'AAA integration patch: src/aaa-runtime-patch.js');
 
 const index = fs.readFileSync(path.resolve('index.html'), 'utf8');
 const entry = fs.readFileSync(path.resolve('src/main-v4.js'), 'utf8');
+const publicWorker = fs.readFileSync(publicWorkerPath, 'utf8');
+const sourceWorker = fs.readFileSync(sourceWorkerPath, 'utf8');
+
 if (!index.includes('src/main-v4.js')) throw new Error('index.html is not booting src/main-v4.js');
-if (!index.includes("./service-worker.js?v=7")) {
-  throw new Error('index.html is not registering the V7 production service worker');
+if (!index.includes("./service-worker.js?v=8")) {
+  throw new Error('index.html is not registering the V8 service worker');
 }
 if (!index.includes('__PROJECT_STRIKE_ENTRY_LOADED__')) {
   throw new Error('index.html is missing the early JavaScript boot watchdog');
 }
+if (!index.includes('type="importmap"') || !index.includes('three/addons/')) {
+  throw new Error('index.html is missing the raw-source Three.js import map recovery');
+}
+if (!index.includes('__PROJECT_STRIKE_SOURCE_MODE__') || !index.includes('/public/game-assets/')) {
+  throw new Error('index.html is missing raw-source game asset URL recovery');
+}
 if (!entry.includes("await import('./v4-runtime-patch.js')")) {
-  throw new Error('main-v4.js is not using the fast dynamic V4 bootstrap');
+  throw new Error('main-v4.js is not loading the V4 IK/recovery layer');
+}
+if (!entry.includes("await import('./aaa-runtime-patch.js')")) {
+  throw new Error('main-v4.js is not loading the V6 AAA feel layer');
+}
+if (publicWorker !== sourceWorker) {
+  throw new Error('Root and public service workers must remain identical for source and Pages hosting.');
+}
+if (!publicWorker.includes("project-strike-v8-runtime") || !publicWorker.includes('/public/game-assets/')) {
+  throw new Error('V8 service worker is missing cache or source-host asset recovery.');
 }
 
 const glbs = walk(assetRoot).filter(file => file.toLowerCase().endsWith('.glb'));
@@ -153,6 +176,7 @@ for (const warning of warnings) console.warn(`Runtime warning: ${warning}`);
 
 console.log(
   `Runtime verified: ${glbs.length} GLBs inspected, ${diskFiles.length} WAV files indexed, ` +
-  `IK module present, fast boot watchdog present, service worker V7 present, required GLB extensions: ` +
-  `${[...requiredExtensions].sort().join(', ') || 'none'}, recoverable optional assets: ${warnings.length}.`
+  `CCD IK + AAA feel modules present, raw-source Three.js/asset recovery present, V8 dual service worker present, ` +
+  `required GLB extensions: ${[...requiredExtensions].sort().join(', ') || 'none'}, ` +
+  `recoverable optional assets: ${warnings.length}.`
 );
