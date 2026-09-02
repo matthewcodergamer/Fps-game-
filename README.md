@@ -1,27 +1,81 @@
 # Project Strike
 
-Project Strike is a browser tactical FPS built with Three.js. The current **V4 recovery build** keeps the existing WebGL/asset architecture and strengthens it for desktop and iPhone: real repository weapons and rigged arms remain the primary assets, while startup is now guarded against stalled model requests and optional systems no longer hold the entire game on the loading screen.
+Project Strike is a browser tactical FPS built with Three.js. The current **V4 recovery + IK build** keeps the existing WebGL/asset architecture and strengthens it for desktop and iPhone: real repository weapons and rigged arms remain the primary assets, startup is guarded against stalled model requests, and inverse kinematics now runs as a final correction layer after animation and weapon motion.
 
 ## V4: loading and deployment fixes
 
-The GitHub Pages build was compiling successfully, so the fix focuses on runtime reliability rather than replacing the game. V4 adds:
+The GitHub Pages build was compiling successfully, so the recovery work focuses on runtime reliability rather than replacing the game. V4 adds:
 
-- **Production service worker:** the actual worker now lives in `public/service-worker.js`, so Vite copies it into `dist/`. It no longer tries to pre-cache source-only files such as the unbuilt root `styles.css`.
-- **Bounded asset loading:** `AssetManager` applies time limits to GLB, glTF, FBX and JSON waits. A valid-but-stalled request can no longer leave `DEPLOY` permanently disabled.
-- **Recovery viewmodels:** repository arms/weapons are still attempted first. If a core first-person model fails, a low-cost procedural recovery mesh is installed so gameplay can still start and diagnostics clearly report the fallback.
+- **Production service worker:** the actual worker lives in `public/service-worker.js`, so Vite copies it into `dist/`.
+- **Bounded asset loading:** `AssetManager` applies time limits to GLB, glTF, FBX and JSON waits. A stalled request can no longer leave `DEPLOY` permanently disabled.
+- **Recovery viewmodels:** repository arms/weapons are attempted first. If a core first-person model fails, a low-cost procedural recovery mesh is installed so gameplay can still start.
 - **Non-blocking optional warmup:** grenade models and audio warm after the core runtime is ready instead of blocking startup.
-- **Stronger verification:** the runtime verifier checks every committed GLB container, relative GLB dependencies, the WAV manifest and the production service worker.
-- **Real browser deployment gate:** GitHub Actions now runs the desktop and iPhone-landscape Playwright gameplay test before Pages can deploy.
+- **Real browser deployment gate:** GitHub Actions runs desktop and iPhone-landscape Playwright gameplay tests before Pages deploys.
+- **Asset verification with explicit recovery:** required runtime assets stay strict. The one previously committed truncated Remington 870 GLB is recorded as an optional recoverable asset and falls back to the procedural shotgun instead of blocking every unrelated deployment.
+
+## Inverse kinematics
+
+Project Strike now uses the **official Three.js `CCDIKSolver`** from `three/addons/animation/CCDIKSolver.js` for the real first-person arm skeleton.
+
+```text
+authored / procedural arm pose
+              ↓
+weapon recoil + sway + sprint + slide + free aim
+              ↓
+        weapon grip sockets
+        ↙               ↘
+  leftGrip           rightGrip
+      ↓                  ↓
+ left-hand CCD        right-hand CCD
+      ↓                  ↓
+ forearm/upper arm bone correction
+              ↓
+        final rendered pose
+```
+
+`src/animation/CharacterIKRig.js` discovers the actual `SkinnedMesh` containing each hand, builds the bone chain from the hand back through the upper arm, adds solver target bones at the weapon sockets, and runs CCD after the normal animation/procedural pose. The IK blend is state-aware: ADS locks hardest, sprint/slide/airborne movement reduces the correction, and the left hand releases during the middle of reloads so reload motion is not destroyed.
+
+The weapon socket layer now exposes:
+
+- `rightGrip`
+- `leftGrip`
+- `muzzle`
+- `optic`
+- `ejection`
+- `magazineGrip`
+- `chargingHandle`
+
+Rifles, pistols, shotguns and snipers get different default grip profiles, and individual weapon definitions can later override those positions with `gripSockets`.
+
+### Foot IK
+
+The current true-body legs are lightweight procedural geometry, not a skinned character skeleton, so they do not use `CCDIKSolver`. Instead they use a terrain-aware two-segment correction layer:
+
+```text
+hip
+ ↓
+knee
+ ↓
+boot
+ ↓
+downward raycast
+ ↓
+actual pavement / curb / prop surface
+```
+
+Each foot samples meshes marked as world surfaces, raises/lowers its leg toward the hit point, adds knee compression, and aligns the boot to the surface normal. The correction blends down during fast sprinting and disables while airborne.
+
+IK is deliberately the **last pose layer**. It does not replace authored animation.
 
 ## First-person body, weapons and movement
 
 V4 builds on the existing separate first-person weapon scene rather than discarding it.
 
-- The world now contains a lightweight **true first-person torso, hips, legs and boots** beneath the camera. The head is intentionally omitted for the local camera, avoiding the inside-face clipping problem while the body remains world geometry.
-- The repository rigged arm model and weapon still render in their dedicated foreground pass after world depth is cleared, so walls cannot visually swallow the gun.
-- Hip-fire now originates from the **physical muzzle socket and barrel direction**. ADS smoothly converges the barrel direction toward the camera sight line rather than treating every shot as a permanent center-screen laser.
-- Weapon motion adds a small free-aim/deadzone layer, spring-like look lag, recoil, landing displacement and a calculated **jerk** response from changes in player acceleration.
-- Movement retains acceleration/deceleration, sprint, crouch, momentum-based sliding and jumping, with jump-fatigue and heavy landing slowdown/compression added for a more tactile feel.
+- The world contains a lightweight **true first-person torso, hips, legs and boots** beneath the camera. The head is intentionally omitted for the local camera.
+- The repository rigged arm model and weapon render in their dedicated foreground pass after world depth is cleared, so walls cannot visually swallow the gun.
+- Hip-fire originates from the **physical muzzle socket and barrel direction**. ADS smoothly converges the barrel direction toward the camera sight line.
+- Weapon motion includes a small free-aim/deadzone layer, spring-like look lag, recoil, landing displacement and a calculated **jerk** response from changes in player acceleration.
+- Movement retains acceleration/deceleration, sprint, crouch, momentum-based sliding and jumping, with jump-fatigue and heavy landing slowdown/compression.
 
 This is inspired by the design principles behind weighted modern FPS handling, not a claim that Project Strike is running proprietary Call of Duty, Cyberpunk, Bodycam or Rainbow Six code.
 
@@ -47,7 +101,7 @@ ACES tone mapping
 desktop restrained bloom   mobile direct PBR
 ```
 
-The new cyber-lighting rig adds localized warm/cool bounce lights and slowly moving additive haze sprites to make neon feel as if it is scattering through humid polluted air. This is intentionally much cheaper than real-time global illumination. A future offline baking pipeline can add second-UV lightmaps to selected GLB environment assets for higher-quality indirect lighting without increasing mobile runtime cost.
+The cyber-lighting rig adds localized warm/cool bounce lights and slowly moving additive haze sprites to make neon feel as if it is scattering through humid polluted air. This is intentionally much cheaper than real-time global illumination.
 
 ## Asset translation layer
 
@@ -59,7 +113,7 @@ GLB / glTF ── GLTFLoader + Meshopt ─┐
 FBX ───────── FBXLoader ────────────┘
 ```
 
-Runtime assets live under `public/game-assets/`; editable/source imports remain under `assets-source/`. The verifier scans the committed GLB set, validates GLB v2 headers and lengths, checks relative external buffers/images, rejects unsupported required Draco compression, and confirms the complete audio manifest.
+Runtime assets live under `public/game-assets/`; editable/source imports remain under `assets-source/`.
 
 ## Rendering architecture
 
@@ -74,6 +128,10 @@ industrial world + animated operators + true body
                           ↓
           repository weapon + rigged-arm scene
                           ↓
+              animation / recoil / sway
+                          ↓
+               CCD weapon-hand IK
+                          ↓
                     HUD / touch UI
 ```
 
@@ -81,13 +139,13 @@ The renderer uses sRGB output, ACES filmic tone mapping, shadows, PMREM environm
 
 ## Combat and effects
 
-The current build includes deterministic recoil patterns, ADS, procedural/authored reload support, named magazine/bolt/slide discovery, muzzle light and smoke, shell ejection, surface sparks, decals, headshots, animated operator targets, frag grenades, flashbangs and a sniper scope overlay. Synthetic muzzle/ejection/optic sockets are created when an asset does not provide a named socket.
+The current build includes deterministic recoil patterns, ADS, procedural/authored reload support, named magazine/bolt/slide discovery, muzzle light and smoke, shell ejection, surface sparks, decals, headshots, animated operator targets, frag grenades, flashbangs and a sniper scope overlay.
 
 ## Audio
 
-All committed WAV files are indexed through `public/game-assets/audio/audio-manifest.json` rather than relying on a partial hard-coded list. The current repository contains 1,990 indexed WAV files across the resident, player-weapon and DLC-weapon layers.
+All committed WAV files are indexed through `public/game-assets/audio/audio-manifest.json`. The current repository contains 1,990 indexed WAV files across the resident, player-weapon and DLC-weapon layers.
 
-Audio unlock happens only after Deploy because Safari and other browsers require a user gesture. V4 bounds the initial audio warmup so a slow decode cannot prevent the player from entering the game; missing or late samples continue warming in the background while gameplay stays responsive.
+Audio unlock happens only after Deploy because Safari and other browsers require a user gesture. V4 bounds the initial audio warmup so a slow decode cannot prevent the player from entering the game.
 
 ## Controls
 
@@ -111,7 +169,7 @@ npm run check
 npm run test:browser
 ```
 
-`npm run check` syntax-checks the V4 runtime modules, validates the runtime asset library and produces the Vite production build. The Playwright suite then boots and enters the real game in desktop Chromium and an iPhone 11 landscape-sized mobile profile, verifies the V4 diagnostics, exercises movement/fire/slide/reload, checks the full-screen canvas and captures render evidence. Pages deployment only proceeds when both gates pass.
+`npm run check` syntax-checks the V4 runtime and IK modules, validates the runtime asset library and produces the Vite production build. The Playwright suite boots the real game in desktop Chromium and an iPhone 11 landscape-sized profile, verifies that the repository arm rig produced at least one active CCD IK chain, exercises movement/fire/slide/reload, checks the full-screen canvas and captures render evidence. Pages deployment only proceeds when both gates pass.
 
 ## Asset provenance
 
