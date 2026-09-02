@@ -5,6 +5,9 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { clone as skeletonClone } from 'three/addons/utils/SkeletonUtils.js';
 
 const MODEL_EXT = /\.([a-z0-9]+)(?:[?#].*)?$/i;
+const IOS_DEVICE = /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+const COARSE_POINTER = matchMedia('(any-pointer: coarse)').matches;
+const MEMORY_SAFE = Boolean(globalThis.__PROJECT_STRIKE_MOBILE_SAFE__ || (IOS_DEVICE && COARSE_POINTER));
 
 function extensionOf(url) {
   return String(url).match(MODEL_EXT)?.[1]?.toLowerCase() || '';
@@ -23,6 +26,13 @@ function runtimeUrl(url) {
   return value;
 }
 
+function clampProgress(event = {}) {
+  const total = Number(event.total || 0);
+  const loaded = Number(event.loaded || 0);
+  if (!total) return { ...event, loaded };
+  return { ...event, loaded: Math.min(loaded, total), total };
+}
+
 function cloneMaterial(material, anisotropy) {
   const next = material.clone();
   for (const key of ['map', 'emissiveMap']) {
@@ -38,6 +48,21 @@ function cloneMaterial(material, anisotropy) {
   return next;
 }
 
+function prepareSharedMaterial(material, anisotropy) {
+  if (!material) return material;
+  for (const key of ['map', 'emissiveMap']) {
+    if (!material[key]) continue;
+    material[key].colorSpace = THREE.SRGBColorSpace;
+    material[key].anisotropy = anisotropy;
+  }
+  for (const key of ['normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']) {
+    if (material[key]) material[key].anisotropy = anisotropy;
+  }
+  if ('envMapIntensity' in material) material.envMapIntensity = Math.max(.62, material.envMapIntensity || 1);
+  material.needsUpdate = true;
+  return material;
+}
+
 function timeoutError(url, timeoutMs) {
   const error = new Error(`Timed out after ${Math.round(timeoutMs / 100) / 10}s while loading ${url}`);
   error.name = 'AssetTimeoutError';
@@ -47,21 +72,27 @@ function timeoutError(url, timeoutMs) {
 /**
  * Runtime translation layer for repository models.
  *
- * Production assets use GLB, while FBX is supported for source inspection and
- * development fallbacks. Both paths return the same normalized asset contract.
- * Every network/model wait is bounded so one broken response cannot hold the
- * entire boot screen forever.
+ * On memory-constrained iOS devices cloned source GLBs are treated as transient:
+ * the clone remains alive in the world/viewmodel, but the decoded source graph is
+ * evicted from the loader cache so Safari does not keep both copies reachable.
  */
 export class AssetManager {
   constructor(renderer, { onProgress = null, timeoutMs = 7000 } = {}) {
     this.renderer = renderer;
     this.onProgress = onProgress;
-    this.timeoutMs = timeoutMs;
+    this.timeoutMs = MEMORY_SAFE ? Math.min(timeoutMs, 6000) : timeoutMs;
     this.cache = new Map();
     this.gltf = new GLTFLoader();
     this.gltf.setMeshoptDecoder(MeshoptDecoder);
     this.fbx = new FBXLoader();
-    this.anisotropy = Math.min(8, renderer?.capabilities?.getMaxAnisotropy?.() || 1);
+    this.anisotropy = Math.min(MEMORY_SAFE ? 2 : 8, renderer?.capabilities?.getMaxAnisotropy?.() || 1);
+  }
+
+  progress(event) {
+    const next = clampProgress(event);
+    const optional = /\/grenades\/|\/attachments\//i.test(String(next.url || ''));
+    if (globalThis.__PROJECT_STRIKE_CORE_READY__ && optional && next.state === 'loading') return;
+    this.onProgress?.(next);
   }
 
   withTimeout(promise, url, timeoutMs = this.timeoutMs) {
@@ -75,17 +106,17 @@ export class AssetManager {
 
   async parseModel(url, { timeoutMs = this.timeoutMs } = {}) {
     const ext = extensionOf(url);
-    this.onProgress?.({ type: 'model', url, state: 'loading' });
+    this.progress({ type: 'model', url, state: 'loading' });
     let asset;
     if (ext === 'glb' || ext === 'gltf') {
       const pending = this.gltf.loadAsync(url, event => {
-        this.onProgress?.({ type: 'model', url, state: 'loading', loaded: event.loaded, total: event.total || 0 });
+        this.progress({ type: 'model', url, state: 'loading', loaded: event.loaded, total: event.total || 0 });
       });
       const gltf = await this.withTimeout(pending, url, timeoutMs);
       asset = { ...gltf, scene: gltf.scene, animations: gltf.animations || [], format: ext };
     } else if (ext === 'fbx') {
       const pending = this.fbx.loadAsync(url, event => {
-        this.onProgress?.({ type: 'model', url, state: 'loading', loaded: event.loaded, total: event.total || 0 });
+        this.progress({ type: 'model', url, state: 'loading', loaded: event.loaded, total: event.total || 0 });
       });
       const scene = await this.withTimeout(pending, url, timeoutMs);
       asset = { scene, animations: scene.animations || [], format: 'fbx', parser: null };
@@ -95,7 +126,7 @@ export class AssetManager {
 
     const report = this.inspect(asset.scene, asset.animations);
     if (!report.meshes) throw new Error(`Model contains no renderable meshes: ${url}`);
-    this.onProgress?.({ type: 'model', url, state: 'ready', report });
+    this.progress({ type: 'model', url, state: 'ready', report });
     return { ...asset, url, report };
   }
 
@@ -136,10 +167,16 @@ export class AssetManager {
     root.traverse(node => {
       if (!node.isMesh) return;
       node.frustumCulled = world;
-      node.castShadow = world;
+      node.castShadow = world && !MEMORY_SAFE;
       node.receiveShadow = world;
-      if (Array.isArray(node.material)) node.material = node.material.map(m => cloneMaterial(m, this.anisotropy));
-      else if (node.material) node.material = cloneMaterial(node.material, this.anisotropy);
+      if (MEMORY_SAFE) {
+        if (Array.isArray(node.material)) node.material = node.material.map(m => prepareSharedMaterial(m, this.anisotropy));
+        else if (node.material) node.material = prepareSharedMaterial(node.material, this.anisotropy);
+      } else if (Array.isArray(node.material)) {
+        node.material = node.material.map(m => cloneMaterial(m, this.anisotropy));
+      } else if (node.material) {
+        node.material = cloneMaterial(node.material, this.anisotropy);
+      }
     });
     return root;
   }
@@ -149,7 +186,7 @@ export class AssetManager {
     if (!this.cache.has(resolvedUrl)) {
       const pending = this.parseModel(resolvedUrl, { timeoutMs }).catch(error => {
         this.cache.delete(resolvedUrl);
-        this.onProgress?.({ type: 'model', url: resolvedUrl, state: 'error', error });
+        this.progress({ type: 'model', url: resolvedUrl, state: 'error', error });
         throw error;
       });
       this.cache.set(resolvedUrl, pending);
@@ -157,7 +194,13 @@ export class AssetManager {
     const source = await this.withTimeout(this.cache.get(resolvedUrl), resolvedUrl, timeoutMs);
     if (!clone) return source;
     const scene = this.prepare(skeletonClone(source.scene), { world });
-    return { ...source, scene, animations: source.animations.map(clip => clip.clone()) };
+    const result = { ...source, scene, animations: source.animations.map(clip => clip.clone()) };
+    if (MEMORY_SAFE) {
+      // Concurrent callers already hold the same promise; deleting here only
+      // removes the long-lived cache reference after the clone is ready.
+      this.cache.delete(resolvedUrl);
+    }
+    return result;
   }
 
   async loadFirst(candidates, options = {}) {
