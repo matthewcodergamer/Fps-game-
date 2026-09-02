@@ -1,4 +1,4 @@
-const CACHE = 'project-strike-v8-runtime';
+const CACHE = 'project-strike-v9-shell';
 const CACHE_PREFIX = 'project-strike-';
 
 self.addEventListener('install', event => {
@@ -14,8 +14,12 @@ self.addEventListener('activate', event => {
   })());
 });
 
-async function remember(request, response) {
+async function rememberSmall(request, response) {
   if (!response?.ok) return response;
+  const length = Number(response.headers.get('content-length') || 0);
+  // Never clone a multi-megabyte response on mobile Safari. Cache Storage plus
+  // GLTF decoding can otherwise keep two copies alive during the peak.
+  if (length > 2_000_000) return response;
   const cache = await caches.open(CACHE);
   await cache.put(request, response.clone());
   return response;
@@ -35,27 +39,23 @@ async function fetchWithSourceFallback(request) {
   return response;
 }
 
-async function networkFirst(request, fallback = null) {
+async function networkFirstSmall(request) {
   try {
     const response = await fetchWithSourceFallback(request);
     if (!response.ok) throw new Error(`${response.status} ${request.url}`);
-    return await remember(request, response);
+    return await rememberSmall(request, response);
   } catch {
     const cached = await caches.match(request);
     if (cached) return cached;
-    if (fallback) {
-      const shell = await caches.match(fallback);
-      if (shell) return shell;
-    }
-    throw new Error(`Offline asset unavailable: ${request.url}`);
+    throw new Error(`Offline resource unavailable: ${request.url}`);
   }
 }
 
-async function cacheFirst(request) {
+async function cacheFirstSmall(request) {
   const cached = await caches.match(request);
   if (cached) return cached;
   const response = await fetchWithSourceFallback(request);
-  return remember(request, response);
+  return rememberSmall(request, response);
 }
 
 self.addEventListener('fetch', event => {
@@ -65,19 +65,21 @@ self.addEventListener('fetch', event => {
   if (url.origin !== self.location.origin) return;
 
   if (request.mode === 'navigate') {
-    event.respondWith(networkFirst(request));
-    return;
-  }
-
-  if (url.pathname.includes('/assets/')) {
-    event.respondWith(cacheFirst(request));
+    event.respondWith(networkFirstSmall(request));
     return;
   }
 
   if (url.pathname.includes('/game-assets/') || url.pathname.includes('/public/game-assets/')) {
-    event.respondWith(networkFirst(request));
+    // Critical iOS stability rule: stream GLBs/textures/audio directly. Do not
+    // response.clone() or put them in Cache Storage during gameplay startup.
+    event.respondWith(fetchWithSourceFallback(request));
     return;
   }
 
-  event.respondWith(networkFirst(request));
+  if (url.pathname.includes('/assets/')) {
+    event.respondWith(cacheFirstSmall(request));
+    return;
+  }
+
+  event.respondWith(networkFirstSmall(request));
 });
