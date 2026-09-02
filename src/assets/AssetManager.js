@@ -10,6 +10,19 @@ function extensionOf(url) {
   return String(url).match(MODEL_EXT)?.[1]?.toLowerCase() || '';
 }
 
+function runtimeUrl(url) {
+  const value = String(url || '');
+  if (
+    globalThis.__PROJECT_STRIKE_SOURCE_MODE__ &&
+    (value.startsWith('./game-assets/') || value.startsWith('game-assets/'))
+  ) {
+    return value.startsWith('./')
+      ? value.replace('./game-assets/', './public/game-assets/')
+      : value.replace('game-assets/', 'public/game-assets/');
+  }
+  return value;
+}
+
 function cloneMaterial(material, anisotropy) {
   const next = material.clone();
   for (const key of ['map', 'emissiveMap']) {
@@ -132,15 +145,16 @@ export class AssetManager {
   }
 
   async loadModel(url, { clone = false, world = false, timeoutMs = this.timeoutMs } = {}) {
-    if (!this.cache.has(url)) {
-      const pending = this.parseModel(url, { timeoutMs }).catch(error => {
-        this.cache.delete(url);
-        this.onProgress?.({ type: 'model', url, state: 'error', error });
+    const resolvedUrl = runtimeUrl(url);
+    if (!this.cache.has(resolvedUrl)) {
+      const pending = this.parseModel(resolvedUrl, { timeoutMs }).catch(error => {
+        this.cache.delete(resolvedUrl);
+        this.onProgress?.({ type: 'model', url: resolvedUrl, state: 'error', error });
         throw error;
       });
-      this.cache.set(url, pending);
+      this.cache.set(resolvedUrl, pending);
     }
-    const source = await this.withTimeout(this.cache.get(url), url, timeoutMs);
+    const source = await this.withTimeout(this.cache.get(resolvedUrl), resolvedUrl, timeoutMs);
     if (!clone) return source;
     const scene = this.prepare(skeletonClone(source.scene), { world });
     return { ...source, scene, animations: source.animations.map(clip => clip.clone()) };
@@ -163,24 +177,25 @@ export class AssetManager {
   }
 
   async loadJSON(url, { timeoutMs = this.timeoutMs } = {}) {
-    if (!this.cache.has(url)) {
+    const resolvedUrl = runtimeUrl(url);
+    if (!this.cache.has(resolvedUrl)) {
       const pending = (async () => {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(timeoutError(url, timeoutMs)), timeoutMs);
+        const timer = setTimeout(() => controller.abort(timeoutError(resolvedUrl, timeoutMs)), timeoutMs);
         try {
-          const response = await fetch(url, { cache: 'no-cache', signal: controller.signal });
-          if (!response.ok) throw new Error(`${response.status} ${url}`);
+          const response = await fetch(resolvedUrl, { cache: 'no-cache', signal: controller.signal });
+          if (!response.ok) throw new Error(`${response.status} ${resolvedUrl}`);
           return response.json();
         } finally {
           clearTimeout(timer);
         }
       })().catch(error => {
-        this.cache.delete(url);
+        this.cache.delete(resolvedUrl);
         throw error;
       });
-      this.cache.set(url, pending);
+      this.cache.set(resolvedUrl, pending);
     }
-    return this.withTimeout(this.cache.get(url), url, timeoutMs);
+    return this.withTimeout(this.cache.get(resolvedUrl), resolvedUrl, timeoutMs);
   }
 
   dispose() {
