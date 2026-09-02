@@ -2,40 +2,171 @@ import * as THREE from 'three';
 import { CCDIKSolver } from 'three/addons/animation/CCDIKSolver.js';
 
 const SIDE_CONFIG = {
-  left: {
-    upper: 'leftUpper',
-    hand: 'leftHand',
-    socket: 'leftGrip'
-  },
-  right: {
-    upper: 'rightUpper',
-    hand: 'rightHand',
-    socket: 'rightGrip'
-  }
+  left: { upper: 'leftUpper', hand: 'leftHand', socket: 'leftGrip' },
+  right: { upper: 'rightUpper', hand: 'rightHand', socket: 'rightGrip' }
 };
 
-function findSkinnedMesh(root, effector) {
-  let match = null;
-  root?.traverse(object => {
-    if (match || !object.isSkinnedMesh || !object.skeleton) return;
-    if (object.skeleton.bones.includes(effector)) match = object;
-  });
-  return match;
+const HAND_HINT = /hand|wrist|palm/i;
+const FINGER_HINT = /thumb|index|middle|ring|pinky|pinkie|finger/i;
+const ARM_HINT = /fore.?arm|lower.?arm|upper.?arm|arm/i;
+
+function sideFromName(name = '') {
+  const value = String(name).toLowerCase();
+  if (/left|(^|[_.\- ])l([_.\- ]|$)|\.l$|_l$|-l$/.test(value)) return 'left';
+  if (/right|(^|[_.\- ])r([_.\- ]|$)|\.r$|_r$|-r$/.test(value)) return 'right';
+  return null;
 }
 
-function buildLinks(skeleton, effector, upper) {
+function boneChildren(bone) {
+  return bone?.children?.filter(child => child?.isBone) || [];
+}
+
+function fingerDescendantCount(bone) {
+  let count = 0;
+  bone?.traverse?.(node => {
+    if (node !== bone && node.isBone && FINGER_HINT.test(node.name || '')) count++;
+  });
+  return count;
+}
+
+function collectSkinnedMeshes(root) {
+  const meshes = [];
+  root?.traverse(object => {
+    if (object.isSkinnedMesh && object.skeleton?.bones?.length) meshes.push(object);
+  });
+  return meshes;
+}
+
+function uniqueBones(meshes) {
+  const seen = new Set();
+  const entries = [];
+  for (const mesh of meshes) {
+    for (const bone of mesh.skeleton.bones) {
+      if (!bone?.isBone || seen.has(bone)) continue;
+      seen.add(bone);
+      entries.push({ bone, mesh, skeleton: mesh.skeleton });
+    }
+  }
+  return entries;
+}
+
+function candidateScore(bone) {
+  const name = bone.name || '';
+  const directChildren = boneChildren(bone).length;
+  const fingerCount = fingerDescendantCount(bone);
+  let score = 0;
+  if (HAND_HINT.test(name)) score += 80;
+  if (FINGER_HINT.test(name)) score -= 35;
+  if (ARM_HINT.test(name) && !HAND_HINT.test(name)) score -= 12;
+  score += Math.min(directChildren, 6) * 13;
+  score += Math.min(fingerCount, 12) * 5;
+  // Hands commonly fan into several finger chains even when every bone is
+  // exported as Bone.001/Bone.002 and carries no useful semantic name.
+  if (directChildren >= 3) score += 45;
+  return score;
+}
+
+function discoverHands(arms, mappedBones = {}) {
+  const meshes = collectSkinnedMeshes(arms);
+  const entries = uniqueBones(meshes);
+  arms?.updateMatrixWorld(true);
+
+  const result = {
+    left: mappedBones.leftHand || null,
+    right: mappedBones.rightHand || null
+  };
+
+  const diagnostics = entries.map(entry => {
+    const position = new THREE.Vector3();
+    entry.bone.getWorldPosition(position);
+    return {
+      ...entry,
+      position,
+      side: sideFromName(entry.bone.name),
+      score: candidateScore(entry.bone)
+    };
+  });
+
+  // First prefer explicit semantic names when the exporter preserved them.
+  for (const side of ['left', 'right']) {
+    if (result[side]) continue;
+    const semantic = diagnostics
+      .filter(entry => entry.side === side && HAND_HINT.test(entry.bone.name || ''))
+      .sort((a, b) => b.score - a.score)[0];
+    if (semantic) result[side] = semantic.bone;
+  }
+
+  // Next prefer the characteristic hand topology: a bone that fans into
+  // several finger branches. This works with generic Blender Bone.00x names.
+  const already = new Set(Object.values(result).filter(Boolean));
+  const handish = diagnostics
+    .filter(entry => !already.has(entry.bone) && entry.score >= 45)
+    .sort((a, b) => b.score - a.score);
+
+  for (const side of ['left', 'right']) {
+    if (result[side]) continue;
+    const sideCandidate = handish.find(entry => entry.side === side && !already.has(entry.bone));
+    if (sideCandidate) {
+      result[side] = sideCandidate.bone;
+      already.add(sideCandidate.bone);
+    }
+  }
+
+  // When names contain no side markers at all, take the two strongest hand
+  // candidates and assign them by horizontal position in the normalized rig.
+  const missing = ['left', 'right'].filter(side => !result[side]);
+  if (missing.length) {
+    const pool = handish.filter(entry => !already.has(entry.bone)).slice(0, Math.max(4, missing.length));
+    pool.sort((a, b) => a.position.x - b.position.x);
+    if (!result.left && pool.length) {
+      result.left = pool[0].bone;
+      already.add(pool[0].bone);
+    }
+    const remaining = pool.filter(entry => !already.has(entry.bone));
+    if (!result.right && remaining.length) {
+      result.right = remaining[remaining.length - 1].bone;
+      already.add(result.right);
+    }
+  }
+
+  return {
+    meshes,
+    hands: result,
+    availableBones: diagnostics
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 18)
+      .map(entry => ({
+        name: entry.bone.name || '(unnamed)',
+        score: entry.score,
+        children: boneChildren(entry.bone).length,
+        side: entry.side,
+        x: Number(entry.position.x.toFixed(4))
+      }))
+  };
+}
+
+function findSkinnedMesh(meshes, effector) {
+  return meshes.find(mesh => mesh.skeleton.bones.includes(effector)) || null;
+}
+
+function buildLinks(skeleton, effector, mappedUpper = null) {
   const links = [];
   let bone = effector?.parent || null;
   let guard = 0;
 
-  while (bone?.isBone && guard++ < 8) {
+  while (bone?.isBone && guard++ < 10 && links.length < 3) {
     const index = skeleton.bones.indexOf(bone);
-    if (index >= 0) links.push({ index });
-    if (bone === upper) return links;
+    if (index >= 0) {
+      links.push({ index });
+      if (mappedUpper && bone === mappedUpper) break;
+      // If useful names exist, stop after reaching the upper arm. Otherwise
+      // three immediate parents is a safe hand→forearm→upper-arm chain.
+      if (!mappedUpper && links.length >= 2 && /upper.?arm|arm.?1|shoulder/i.test(bone.name || '')) break;
+    }
     bone = bone.parent;
   }
 
-  return [];
+  return links;
 }
 
 function attachTargetBone(skeleton, socket, name) {
@@ -79,9 +210,7 @@ export class CharacterIKRig {
   }
 
   clear() {
-    for (const chain of Object.values(this.chains)) {
-      chain.target?.removeFromParent();
-    }
+    for (const chain of Object.values(this.chains)) chain.target?.removeFromParent();
     this.solvers.length = 0;
     this.chains = {};
     this.arms = null;
@@ -126,23 +255,22 @@ export class CharacterIKRig {
     this.clear();
     this.arms = arms;
 
+    const discovery = discoverHands(arms, bones);
     const groups = new Map();
     const chainDiagnostics = {};
 
     for (const [side, config] of Object.entries(SIDE_CONFIG)) {
-      const upper = bones[config.upper];
-      const effector = bones[config.hand];
+      const effector = discovery.hands[side];
       const socket = sockets[config.socket];
-
-      if (!upper || !effector || !socket) {
+      if (!effector || !socket) {
         chainDiagnostics[side] = {
           active: false,
-          reason: !socket ? `missing-${config.socket}` : 'missing-arm-bones'
+          reason: !socket ? `missing-${config.socket}` : 'no-hand-effector'
         };
         continue;
       }
 
-      const mesh = findSkinnedMesh(arms, effector);
+      const mesh = findSkinnedMesh(discovery.meshes, effector);
       if (!mesh) {
         chainDiagnostics[side] = { active: false, reason: 'no-skinned-mesh' };
         continue;
@@ -150,11 +278,16 @@ export class CharacterIKRig {
 
       const skeleton = mesh.skeleton;
       const effectorIndex = skeleton.bones.indexOf(effector);
-      const links = buildLinks(skeleton, effector, upper);
+      const mappedUpper = bones[config.upper] && skeleton.bones.includes(bones[config.upper])
+        ? bones[config.upper]
+        : null;
+      const links = buildLinks(skeleton, effector, mappedUpper);
+
       if (effectorIndex < 0 || links.length < 2) {
         chainDiagnostics[side] = {
           active: false,
           reason: 'invalid-bone-chain',
+          effector: effector.name || '(unnamed)',
           links: links.length
         };
         continue;
@@ -172,7 +305,7 @@ export class CharacterIKRig {
         links,
         iteration: this.mobile ? 2 : 4,
         minAngle: 0.0005,
-        maxAngle: this.mobile ? 0.28 : 0.34,
+        maxAngle: this.mobile ? 0.24 : 0.32,
         blendFactor: 0.9
       };
 
@@ -182,18 +315,15 @@ export class CharacterIKRig {
 
       chainDiagnostics[side] = {
         active: true,
-        effector: effector.name || config.hand,
-        upper: upper.name || config.upper,
-        links: links.length,
-        socket: config.socket
+        effector: effector.name || '(unnamed)',
+        links: links.map(link => skeleton.bones[link.index]?.name || `(bone ${link.index})`),
+        socket: config.socket,
+        discovered: !bones[config.hand]
       };
     }
 
     for (const [mesh, iks] of groups) {
-      this.solvers.push({
-        mesh,
-        solver: new CCDIKSolver(mesh, iks)
-      });
+      this.solvers.push({ mesh, solver: new CCDIKSolver(mesh, iks) });
     }
 
     const activeChains = Object.values(chainDiagnostics).filter(value => value.active).length;
@@ -202,16 +332,14 @@ export class CharacterIKRig {
       solver: 'Three.js CCDIKSolver',
       activeChains,
       chains: chainDiagnostics,
+      availableBones: discovery.availableBones,
       reason: activeChains ? 'ready' : 'no-compatible-chains'
     };
 
     return this.diagnostics;
   }
 
-  update({
-    leftWeight = 1,
-    rightWeight = 1
-  } = {}) {
+  update({ leftWeight = 1, rightWeight = 1 } = {}) {
     if (!this.solvers.length) return false;
 
     const weights = {
