@@ -101,8 +101,12 @@ AssetManager.prototype.loadModel = function (url, options = {}) {
       }
       admittedBuildings.add(value);
     }
-    if (emergency && /environment\/terrain\//i.test(value)) {
-      return Promise.reject(new Error('iOS emergency mode: optional terrain deferred'));
+    // The repository cover/terrain GLBs are much larger than the enterable
+    // Kenney buildings. The arena already has collision/primitive street cover,
+    // so defer these multi-megabyte props on iPhone instead of spending the
+    // startup memory peak on decorative meshes.
+    if (options.world && /environment\/(?:cover|terrain)\//i.test(value)) {
+      return Promise.reject(new Error('iOS memory governor: heavy world prop deferred'));
     }
   }
   return loadModel.call(this, url, options);
@@ -167,6 +171,7 @@ globalThis.__PROJECT_STRIKE_MOBILE_STABILITY__ = {
   operatorFallback: mobileSafe,
   opticFallback: mobileSafe,
   grenadeFallback: mobileSafe,
+  heavyWorldPropsDeferred: mobileSafe,
   pmremDisabled: mobileSafe,
   largeAssetCacheDisabled: true
 };
