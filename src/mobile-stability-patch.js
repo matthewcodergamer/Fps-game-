@@ -22,8 +22,38 @@ globalThis.__PROJECT_STRIKE_MOBILE_SAFE__ = mobileSafe;
 globalThis.__PROJECT_STRIKE_EMERGENCY_MODE__ = emergency;
 globalThis.__PROJECT_STRIKE_CORE_READY__ = false;
 
-// A repeated Safari process restore gets an even stricter second boot rather
-// than reconstructing the same high-memory scene and crashing in a loop.
+async function claimStreamingWorker() {
+  const state = { attempted: false, previous: null, controllerChanged: false };
+  if (!mobileSafe || !('serviceWorker' in navigator)) return state;
+  state.attempted = true;
+  state.previous = navigator.serviceWorker.controller?.scriptURL || null;
+  try {
+    const registration = await navigator.serviceWorker.register('./service-worker.js?v=9');
+    await registration.update();
+    if (state.previous && !state.previous.includes('v=9')) {
+      await Promise.race([
+        new Promise(resolve => {
+          const onChange = () => {
+            navigator.serviceWorker.removeEventListener('controllerchange', onChange);
+            state.controllerChanged = true;
+            resolve();
+          };
+          navigator.serviceWorker.addEventListener('controllerchange', onChange, { once: true });
+        }),
+        new Promise(resolve => setTimeout(resolve, 1800))
+      ]);
+    }
+  } catch (error) {
+    console.info('V9 worker preflight unavailable; direct network loading remains active.', error);
+  }
+  return state;
+}
+
+// If V8 is already controlling this tab, do not begin large GLB work until V9
+// has had a chance to install/claim the page. V8 cloned every GLB into Cache
+// Storage and could trigger an iOS process kill during the very first V7 visit.
+const workerUpgrade = await claimStreamingWorker();
+
 const allowedBuildings = emergency ? 2 : 3;
 const admittedBuildings = new Set();
 let decodeActive = 0;
@@ -78,8 +108,6 @@ AssetManager.prototype.loadModel = function (url, options = {}) {
   return loadModel.call(this, url, options);
 };
 
-// The optic is presentation-only. On the iPhone 11 the weapon, reticle and ADS
-// remain functional without decoding a separate GLB during the startup peak.
 const loadAttachment = FPSViewModel.prototype.loadAttachment;
 FPSViewModel.prototype.loadAttachment = function (url) {
   if (mobileSafe) {
@@ -89,8 +117,6 @@ FPSViewModel.prototype.loadAttachment = function (url) {
   return loadAttachment.call(this, url);
 };
 
-// Grenade gameplay already has primitive fallback meshes. Do not warm two more
-// GLBs while Safari is holding the district, arms and weapon decoder graphs.
 const grenadeInit = GrenadeController.prototype.init;
 GrenadeController.prototype.init = function (assets) {
   if (mobileSafe) {
@@ -107,15 +133,11 @@ if (mobileSafe) {
     return setPixelRatio.call(this, Math.min(Number(value) || 1, cap));
   };
 
-  // PMREM's six-face offscreen render is a large temporary GPU allocation.
-  // Mobile uses the direct lights / PBR materials instead of generating it.
   THREE.PMREMGenerator.prototype.fromScene = function () {
     return { texture: null, dispose() {} };
   };
 }
 
-// Mark the core as ready as soon as DEPLOY becomes available. Optional model
-// progress can no longer overwrite the final ready status after this point.
 const readyTimer = setInterval(() => {
   const button = document.querySelector('#playBtn');
   if (!button || button.disabled) return;
@@ -124,9 +146,6 @@ const readyTimer = setInterval(() => {
 }, 80);
 setTimeout(() => clearInterval(readyTimer), 60_000);
 
-// Only clear the restart guard after the player has actually entered gameplay
-// and remained stable for a while. A Safari auto-restore therefore escalates to
-// emergency mode instead of repeating the same crash forever.
 const stableTimer = setInterval(() => {
   const boot = document.querySelector('#boot');
   if (!mobileSafe || !boot?.classList.contains('hidden')) return;
@@ -142,6 +161,7 @@ globalThis.__PROJECT_STRIKE_MOBILE_STABILITY__ = {
   mobileSafe,
   emergency,
   restartCount,
+  workerUpgrade,
   maxConcurrentModelDecodes: decodeLimit,
   initialEnterableBuildings: mobileSafe ? allowedBuildings : 8,
   operatorFallback: mobileSafe,
