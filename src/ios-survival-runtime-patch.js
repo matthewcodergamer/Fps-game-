@@ -1,8 +1,19 @@
+import { AssetManager } from './assets/AssetManager.js';
 import { GrenadeController, RecoilController } from './gameplay/CombatSystems.js';
 import { FPSViewModel } from './weapons/FPSViewModel.js';
 
 const mobileStreaming = Boolean(globalThis.__PROJECT_STRIKE_MOBILE_STREAMING__);
 const proto = FPSViewModel.prototype;
+
+// Expose the already-patched AssetManager instance to systems created later in
+// gameplay (notably the real true-body rig). Because this wrapper sits outside
+// the V9 mobile loader, those late loads still go through the same one-at-a-time
+// critical/background queue rather than creating a second GLTF decoder path.
+const streamedLoadModel = AssetManager.prototype.loadModel;
+AssetManager.prototype.loadModel = function (...args) {
+  globalThis.__PROJECT_STRIKE_ASSET_MANAGER__ = this;
+  return streamedLoadModel.apply(this, args);
+};
 
 // V9 makes the repository models authoritative again. V4 still has emergency
 // geometry recovery if a file genuinely fails, but a fallback no longer counts
@@ -73,5 +84,6 @@ globalThis.__PROJECT_STRIKE_IOS_SURVIVAL_RUNTIME__ = {
   realWeaponRequired: mobileStreaming,
   realArmsRequired: mobileStreaming,
   realGrenadesRequired: mobileStreaming,
+  realTrueBodyRequestedAfterDeploy: mobileStreaming,
   boundedTouchRecoil: mobileStreaming
 };
