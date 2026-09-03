@@ -47,9 +47,7 @@ test('V10 uses WebGPU, real repository assets, working touch movement and non-ac
     body: window.__PROJECT_STRIKE_TRUE_BODY__,
     vfx: window.__PROJECT_STRIKE_GPU_VFX__
   }));
-  if (!startup.enabled) {
-    throw new Error(`V10 startup failed: ${JSON.stringify({ startup, pageErrors, modelRequests }, null, 2)}`);
-  }
+  if (!startup.enabled) throw new Error(`V10 startup failed: ${JSON.stringify({ startup, pageErrors, modelRequests }, null, 2)}`);
 
   await expect(playButton).toBeEnabled();
   await expect(page.locator('#stageBadge')).toHaveText('V10');
@@ -114,14 +112,29 @@ test('V10 uses WebGPU, real repository assets, working touch movement and non-ac
   const cy = padBox.y + padBox.height / 2;
   await page.locator('#leftPad').dispatchEvent('pointerdown', pointer('pointerdown', cx, cy));
   await page.locator('#leftPad').dispatchEvent('pointermove', pointer('pointermove', cx, cy - padBox.height * 0.31));
-  await page.waitForTimeout(850);
+  await page.waitForTimeout(420);
+  const midMove = await page.evaluate(() => ({
+    player: window.__PROJECT_STRIKE_PLAYER_STATE__,
+    bridge: window.__PROJECT_STRIKE_MOBILE_INPUT_BRIDGE__,
+    movement: window.__PROJECT_STRIKE_MOBILE_MOVEMENT__
+  }));
+  await page.waitForTimeout(430);
   await page.locator('#leftPad').dispatchEvent('pointerup', pointer('pointerup', cx, cy - padBox.height * 0.31));
   await page.waitForTimeout(120);
 
   const afterMove = await page.evaluate(() => window.__PROJECT_STRIKE_PLAYER_STATE__);
-  expect(afterMove?.movementInputActive).toBe(false);
   const moved = Math.hypot(afterMove.position[0] - beforeMove[0], afterMove.position[2] - beforeMove[2]);
-  expect(moved, `player failed to move: ${JSON.stringify({ beforeMove, afterMove })}`).toBeGreaterThan(0.35);
+
+  const keyboardBefore = [...afterMove.position];
+  await page.keyboard.down('w');
+  await page.waitForTimeout(450);
+  await page.keyboard.up('w');
+  await page.waitForTimeout(80);
+  const keyboardAfter = await page.evaluate(() => window.__PROJECT_STRIKE_PLAYER_STATE__);
+  const keyboardMoved = Math.hypot(keyboardAfter.position[0] - keyboardBefore[0], keyboardAfter.position[2] - keyboardBefore[2]);
+
+  expect(afterMove?.movementInputActive).toBe(false);
+  expect(moved, `player failed to move: ${JSON.stringify({ beforeMove, midMove, afterMove, keyboardBefore, keyboardAfter, keyboardMoved })}`).toBeGreaterThan(0.35);
 
   const beforeFire = await page.evaluate(() => ({ ...window.__PROJECT_STRIKE_PLAYER_STATE__ }));
   const fire = page.locator('#fireBtn');
@@ -154,10 +167,7 @@ test('V10 uses WebGPU, real repository assets, working touch movement and non-ac
   expect(afterFire.diagnostics?.cumulativeCameraShake).toBe(false);
   expect(afterFire.canvas.width).toBeGreaterThan(300);
   expect(afterFire.canvas.height).toBeGreaterThan(150);
-  expect(afterFire.canvas.cssWidth / afterFire.canvas.cssHeight).toBeCloseTo(
-    testInfo.project.use.viewport.width / testInfo.project.use.viewport.height,
-    1
-  );
+  expect(afterFire.canvas.cssWidth / afterFire.canvas.cssHeight).toBeCloseTo(testInfo.project.use.viewport.width / testInfo.project.use.viewport.height, 1);
 
   const screenshot = testInfo.outputPath('iphone-v10-webgpu-real-assets.png');
   await page.screenshot({ path: screenshot, fullPage: true });
