@@ -31,7 +31,27 @@ test('V10 uses WebGPU, real repository assets, working touch movement and non-ac
   expect(capability.gpu, 'CI Chromium did not expose WebGPU with the configured SwiftShader/Vulkan flags').toBe(true);
 
   const playButton = page.locator('#playBtn');
-  await expect(playButton).toBeEnabled({ timeout: 240_000 });
+  await page.waitForFunction(() => {
+    const button = document.querySelector('#playBtn');
+    return Boolean(button && (!button.disabled || button.textContent?.includes('FAILED')));
+  }, null, { timeout: 240_000 });
+
+  const startup = await page.evaluate(() => ({
+    enabled: !document.querySelector('#playBtn')?.disabled,
+    button: document.querySelector('#playBtn')?.textContent,
+    status: document.querySelector('#renderStatus')?.textContent,
+    asset: document.querySelector('#loadAsset')?.textContent,
+    percent: document.querySelector('#loadPercent')?.textContent,
+    error: document.querySelector('#runtimeError')?.textContent,
+    diagnostics: window.__PROJECT_STRIKE_DIAGNOSTICS__,
+    body: window.__PROJECT_STRIKE_TRUE_BODY__,
+    vfx: window.__PROJECT_STRIKE_GPU_VFX__
+  }));
+  if (!startup.enabled) {
+    throw new Error(`V10 startup failed: ${JSON.stringify({ startup, pageErrors, modelRequests }, null, 2)}`);
+  }
+
+  await expect(playButton).toBeEnabled();
   await expect(page.locator('#stageBadge')).toHaveText('V10');
   await expect(page.locator('#loadPercent')).toHaveText('100%');
 
