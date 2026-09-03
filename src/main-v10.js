@@ -733,6 +733,7 @@ async function startRuntime() {
     cumulativeCameraShake: false,
     mobilePointerMovement: 'authoritative-analog-bridge',
     frameDriver: 'requestAnimationFrame-after-webgpu-init',
+    simulationDriver: 'fixed-timer-independent-of-render',
     realRepositoryModels: true,
     requiredWorldModels: arena.required,
     arms: view.diagnostics.arms,
@@ -749,6 +750,27 @@ async function startRuntime() {
   playButton.disabled = false;
   playButton.textContent = 'DEPLOY';
   setStatus('READY · WEBGPU · REAL ASSETS');
+
+  let simulationLast = performance.now();
+  let simulationTicks = 0;
+  function simulationTick() {
+    const now = performance.now();
+    const dt = Math.min(1 / 30, Math.max(1 / 240, (now - simulationLast) / 1000));
+    simulationLast = now;
+    if (started) {
+      updatePlayer(dt);
+      player.cooldown = Math.max(0, player.cooldown - dt);
+      if (firing) shoot();
+      grenades.update(dt, arena, player.pos);
+      simulationTicks++;
+      if (globalThis.__PROJECT_STRIKE_DIAGNOSTICS__) {
+        globalThis.__PROJECT_STRIKE_DIAGNOSTICS__.simulationTicks = simulationTicks;
+        globalThis.__PROJECT_STRIKE_DIAGNOSTICS__.lastSimulationAt = now;
+      }
+    }
+  }
+  const simulationTimer = setInterval(simulationTick, 1000 / 60);
+  addEventListener('pagehide', () => clearInterval(simulationTimer), { once: true });
 
   playButton.onclick = async () => {
     await audio.unlock();
@@ -771,18 +793,12 @@ async function startRuntime() {
     // cannot silently stop at the loading -> Deploy transition.
     frameHandle = requestAnimationFrame(frame);
     const dt = Math.min(1 / 30, clock.getDelta());
-    if (started) {
-      updatePlayer(dt);
-      player.cooldown = Math.max(0, player.cooldown - dt);
-      if (firing) shoot();
-    } else {
+    if (!started) {
       camera.position.set(0, 2.05, 13);
       camera.rotation.set(-0.025, 0, 0, 'YXZ');
       view.update(dt, { time: performance.now() * 0.001, speed: 0, stepPhase: 0 });
     }
-
     arena.update(dt, performance.now() * 0.001);
-    grenades.update(dt, arena, player.pos);
     vfx.update(dt);
 
     try {
