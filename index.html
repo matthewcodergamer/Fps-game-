@@ -9,7 +9,8 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="styles.css">
-  <title>Project Strike V8</title>
+  <link rel="stylesheet" href="mobile-fixes.css?v=9">
+  <title>Project Strike V9</title>
   <script type="importmap">
   {
     "imports": {
@@ -24,16 +25,16 @@
   <canvas id="game"></canvas>
 
   <div id="boot" class="panel boot">
-    <div class="brandRow"><div class="strikeMark">PS</div><div><div class="eyebrow">PROJECT STRIKE</div><div class="buildTag">V8 IOS SURVIVAL BOOT · ZERO MODEL STARTUP · WEBGL2</div></div></div>
+    <div class="brandRow"><div class="strikeMark">PS</div><div><div class="eyebrow">PROJECT STRIKE</div><div class="buildTag">V9 REAL ASSET STREAMING · ONE GLB DECODE · WEBGL2</div></div></div>
     <h1>PROJECT<br>STRIKE</h1>
-    <p class="lead">iPhone now boots the tactical FPS core before repository models: procedural weapon and arms, lightweight district, physical hit reactions, barrel ballistics, movement and mobile-scalable lighting. Desktop keeps the full repository-asset path.</p>
-    <div id="renderStatus" class="renderStatus">Refreshing V8 runtime…</div>
+    <p class="lead">Repository-quality M4A1, rigged first-person arms, animated operators, real grenades and industrial models. iPhone decodes one GLB at a time and streams background world assets after critical gameplay models so realism no longer means a Safari memory spike.</p>
+    <div id="renderStatus" class="renderStatus">Refreshing V9 runtime…</div>
     <div class="boot-actions">
       <button id="playBtn" class="primary" disabled>LOADING</button>
       <button id="roadmapBtn" class="secondary">BUILD STATUS</button>
     </div>
-    <div id="audioStatus" class="muted">Audio unlocks after Deploy. iPhone V8 does not pre-decode audio banks during startup.</div>
-    <div class="systems"><span>ZERO GLB IOS BOOT</span><span>V10 FRESH CACHE</span><span>PROCEDURAL VIEWMODEL</span><span>FREE AIM</span><span>SPRING RECOIL</span><span>LIMB DAMAGE</span><span>STAGGER + LIMP</span><span>DISMEMBERMENT</span><span>TRUE BODY</span><span>BARREL BALLISTICS</span><span>LOW GPU MEMORY</span><span>GAMEPAD</span></div>
+    <div id="audioStatus" class="muted">Audio unlocks after Deploy. Large model responses stream directly and are not duplicated into Cache Storage.</div>
+    <div class="systems"><span>REAL M4A1</span><span>RIGGED FPS ARMS</span><span>ANIMATED OPERATORS</span><span>REAL GRENADES</span><span>SERIAL GLB IOS</span><span>V11 STREAM CACHE</span><span>BOUND RECOIL</span><span>FREE AIM</span><span>IK HAND LOCK</span><span>LIMB DAMAGE</span><span>STAGGER + LIMP</span><span>BARREL BALLISTICS</span><span>STREAMED DISTRICT</span><span>GAMEPAD</span></div>
   </div>
 
   <aside id="roadmap" class="roadmap hidden"><div class="roadmapHead"><div><div class="eyebrow">DEVELOPMENT</div><h2>BUILD ROADMAP</h2></div><button id="closeRoadmap">×</button></div><div id="stageList"></div></aside>
@@ -44,7 +45,7 @@
 
   <div id="hud" class="hidden">
     <div id="crosshair"><span></span><span></span><span></span><span></span></div>
-    <div class="topbar"><div><span id="fps">60 FPS</span><span id="controllerStatus" class="controlMode">TOUCH/MOUSE</span></div><div id="statusText">READY</div><div id="stageBadge">V8</div></div>
+    <div class="topbar"><div><span id="fps">60 FPS</span><span id="controllerStatus" class="controlMode">TOUCH/MOUSE</span></div><div id="statusText">READY</div><div id="stageBadge">V9</div></div>
     <div id="weaponName">M4A1</div><div class="ammo"><strong id="ammo">30</strong><span>/ 120</span></div><div id="hitmarker">×</div>
     <div id="leftPad" class="touchPad"><div class="stick"></div></div><div id="lookZone"></div>
     <div class="buttons">
@@ -56,7 +57,7 @@
   </div>
 </div>
 <script>
-window.__PROJECT_STRIKE_BUILD__ = 'v8-ios-survival';
+window.__PROJECT_STRIKE_BUILD__ = 'v9-real-assets';
 window.__PROJECT_STRIKE_ENTRY_LOADED__ = false;
 window.__PROJECT_STRIKE_PREBOOT__ = (async () => {
   const state = { ios: /iPhone|iPad|iPod/i.test(navigator.userAgent || ''), cachesPurged: 0, worker: false };
@@ -68,33 +69,33 @@ window.__PROJECT_STRIKE_PREBOOT__ = (async () => {
       state.cachesPurged = projectKeys.length;
     }
     if ('serviceWorker' in navigator) {
-      const registration = await navigator.serviceWorker.register('./service-worker.js?v=10', { updateViaCache: 'none' });
+      const registration = await navigator.serviceWorker.register('./service-worker.js?v=11', { updateViaCache: 'none' });
       await registration.update();
       state.worker = true;
     }
   } catch (error) {
-    console.info('V8 preboot cache refresh recovered.', error);
+    console.info('V9 preboot cache refresh recovered.', error);
   }
   return state;
 })();
 setTimeout(() => {
   if (window.__PROJECT_STRIKE_ENTRY_LOADED__) return;
   const status = document.querySelector('#renderStatus');
-  if (status) status.textContent = 'V8 JavaScript bundle is loading slowly…';
+  if (status) status.textContent = 'V9 JavaScript bundle is loading slowly…';
 }, 2500);
 setTimeout(() => {
   if (window.__PROJECT_STRIKE_ENTRY_LOADED__) return;
   const status = document.querySelector('#renderStatus');
   const button = document.querySelector('#playBtn');
-  if (status) status.textContent = 'V8 runtime did not load · tap reload';
+  if (status) status.textContent = 'V9 runtime did not load · tap reload';
   if (button) {
     button.disabled = false;
-    button.textContent = 'RELOAD V8';
-    button.onclick = () => location.replace(`${location.pathname}?v=8&reload=${Date.now()}`);
+    button.textContent = 'RELOAD V9';
+    button.onclick = () => location.replace(`${location.pathname}?v=9&reload=${Date.now()}`);
   }
-}, 10000);
+}, 12000);
 </script>
-<script type="module" src="src/main-v4.js?v=8"></script>
+<script type="module" src="src/main-v4.js?v=9"></script>
 <script>
 (() => {
   const sourceEntry = [...document.querySelectorAll('script[type="module"][src]')]
@@ -125,7 +126,7 @@ setTimeout(() => {
 </script>
 <script>
 if ('serviceWorker' in navigator) {
-  addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js?v=10', { updateViaCache: 'none' })
+  addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js?v=11', { updateViaCache: 'none' })
     .then(registration => registration.update())
     .catch(error => console.info('Service worker unavailable; online runtime is unaffected.', error)));
 }
