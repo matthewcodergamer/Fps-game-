@@ -14,6 +14,10 @@ if (globalThis.__PROJECT_STRIKE_BOOT__) globalThis.__PROJECT_STRIKE_BOOT__.phase
       Promise.resolve(globalThis.__PROJECT_STRIKE_PREBOOT__),
       new Promise(resolve => setTimeout(resolve, 2400))
     ]);
+
+    const { installMobileMovementBridgeV10 } = await import('./input/MobileMovementBridgeV10.js');
+    installMobileMovementBridgeV10();
+
     if (status) status.textContent = 'Starting V10 WebGPU runtime…';
     await import('./main-v10.js');
   } catch (error) {
