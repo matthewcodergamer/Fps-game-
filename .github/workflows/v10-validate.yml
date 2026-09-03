@@ -25,5 +25,6 @@ jobs:
         run: npm install --no-save @playwright/test@1.62.1
       - name: Install current Chromium for WebGPU regression
         run: npx playwright install --with-deps chromium
+      # This run includes joystick mid-frame + keyboard probes so movement failures identify input vs collision.
       - name: Test V10 WebGPU movement recoil IK and real assets
         run: npm run test:browser
