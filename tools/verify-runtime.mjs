@@ -42,7 +42,7 @@ function inspectGLB(file) {
       if (!recoverableLengthMismatch.has(relative)) {
         throw new Error(`GLB length mismatch: ${relative} (${declaredLength} != ${actualLength})`);
       }
-      warnings.push(`Recoverable optional GLB uses procedural fallback: ${relative} (${declaredLength} declared, ${actualLength} bytes present)`);
+      warnings.push(`Recoverable optional GLB: ${relative} (${declaredLength} declared, ${actualLength} bytes present)`);
     }
     const jsonLength = header.readUInt32LE(12);
     const jsonType = header.readUInt32LE(16);
@@ -74,11 +74,12 @@ const sourceWorkerPath = path.resolve('service-worker.js');
 const requiredSourceFiles = [
   [publicWorkerPath, 'production service worker'],
   [sourceWorkerPath, 'source-host service worker'],
+  [path.resolve('mobile-fixes.css'), 'mobile touch input recovery CSS'],
   [path.resolve('src/animation/CharacterIKRig.js'), 'weapon IK module'],
-  [path.resolve('src/gameplay/AAAFeelSystem.js'), 'AAA feel module'],
+  [path.resolve('src/gameplay/AAAFeelSystem.js'), 'bounded AAA feel module'],
   [path.resolve('src/gameplay/PhysicalReactionSystem.js'), 'physical reaction module'],
-  [path.resolve('src/mobile-stability-patch.js'), 'V8 iOS survival patch'],
-  [path.resolve('src/ios-survival-runtime-patch.js'), 'V8 procedural readiness adapter'],
+  [path.resolve('src/mobile-stability-patch.js'), 'V9 iOS real-asset streaming patch'],
+  [path.resolve('src/ios-survival-runtime-patch.js'), 'V9 real-model requirement adapter'],
   [path.resolve('src/aaa-runtime-patch.js'), 'AAA integration patch'],
   [path.resolve('src/gore-runtime-patch.js'), 'physical reaction integration patch']
 ];
@@ -90,11 +91,15 @@ const publicWorker = fs.readFileSync(publicWorkerPath, 'utf8');
 const sourceWorker = fs.readFileSync(sourceWorkerPath, 'utf8');
 const assetManager = fs.readFileSync(path.resolve('src/assets/AssetManager.js'), 'utf8');
 const mobilePatch = fs.readFileSync(path.resolve('src/mobile-stability-patch.js'), 'utf8');
-const survivalAdapter = fs.readFileSync(path.resolve('src/ios-survival-runtime-patch.js'), 'utf8');
+const realModelAdapter = fs.readFileSync(path.resolve('src/ios-survival-runtime-patch.js'), 'utf8');
+const feel = fs.readFileSync(path.resolve('src/gameplay/AAAFeelSystem.js'), 'utf8');
+const mobileCss = fs.readFileSync(path.resolve('mobile-fixes.css'), 'utf8');
 
-requireText(index, 'V8 IOS SURVIVAL BOOT', 'visible V8 build marker');
-requireText(index, 'src/main-v4.js?v=8', 'cache-busted V8 entry');
-requireText(index, "./service-worker.js?v=10", 'V10 worker registration');
+requireText(index, 'V9 REAL ASSET STREAMING', 'visible V9 build marker');
+requireText(index, 'mobile-fixes.css?v=9', 'mobile movement CSS');
+requireText(index, 'src/main-v4.js?v=9', 'cache-busted V9 entry');
+requireText(index, "./service-worker.js?v=11", 'V11 worker registration');
+requireText(index, "window.__PROJECT_STRIKE_BUILD__ = 'v9-real-assets'", 'V9 build identity');
 requireText(index, "updateViaCache: 'none'", 'service-worker cache bypass');
 requireText(index, '__PROJECT_STRIKE_PREBOOT__', 'pre-module cache purge');
 requireText(index, "key.startsWith('project-strike-')", 'old Project Strike cache purge');
@@ -111,33 +116,48 @@ for (const modulePath of [
   "await import('./aaa-runtime-patch.js')",
   "await import('./gore-runtime-patch.js')"
 ]) requireText(entry, modulePath, `runtime module ${modulePath}`);
-requireText(entry, '__PROJECT_STRIKE_PREBOOT__', 'V8 preboot wait');
-requireText(entry, "build: 'v8-ios-survival'", 'V8 runtime build marker');
+requireText(entry, '__PROJECT_STRIKE_PREBOOT__', 'V9 preboot wait');
+requireText(entry, "build: 'v9-real-assets'", 'V9 runtime build marker');
 
-if (publicWorker !== sourceWorker) throw new Error('Root and public V10 service workers must remain byte-identical.');
-requireText(publicWorker, "project-strike-v10-shell", 'V10 cache namespace');
+if (publicWorker !== sourceWorker) throw new Error('Root and public V11 service workers must remain byte-identical.');
+requireText(publicWorker, "project-strike-v11-shell", 'V11 cache namespace');
 requireText(publicWorker, "cache: 'no-store'", 'fresh navigation/asset requests');
-requireText(publicWorker, 'never cloned into Cache Storage', 'zero large-asset cache rule');
+requireText(publicWorker, 'never cloned into Cache Storage', 'zero duplicate large-asset cache rule');
 requireText(publicWorker, "key.startsWith(CACHE_PREFIX)", 'old Project Strike cache deletion');
 
 requireText(assetManager, 'this.cache.delete(resolvedUrl)', 'decoded model cache eviction');
 requireText(assetManager, 'Math.min(loaded, total)', 'progress clamping');
+requireText(assetManager, 'MeshoptDecoder', 'Meshopt decoder support');
 
-// These are the architecture-level invariants for the real iPhone Safari crash:
-// the model loader rejects all repository model formats before it can call the
-// original loader, PMREM/shadow-map allocation is disabled, and audio does not
-// pre-decode during the vulnerable transition.
-requireText(mobilePatch, 'IOSSurvivalModelDeferredError', 'zero-model iOS rejection');
-requireText(mobilePatch, "const modelExtension = /\\.(?:glb|gltf|fbx)", 'all supported model formats guarded');
-requireText(mobilePatch, 'maxConcurrentModelDecodes: survivalMode ? 0 : 3', 'zero iOS model decoders');
-requireText(mobilePatch, 'initialRepositoryModelLoads: survivalMode ? 0 : null', 'zero startup repository models');
-requireText(mobilePatch, 'shadowMapsDisabled: survivalMode', 'iOS shadow-map disable');
-requireText(mobilePatch, 'audioPrewarmDisabled: survivalMode', 'iOS audio prewarm disable');
-requireText(mobilePatch, "productionServiceWorker: 'v10'", 'V10 diagnostics');
-requireText(survivalAdapter, 'proceduralViewmodelCountsAsReady', 'procedural fallback readiness');
+// Real iPhone V9 architecture invariants: repository models are enabled again,
+// one decoder runs at a time, world dressing is background-streamed, and the
+// old crash-point holo is substituted by a smaller *real repository* optic.
+requireText(mobilePatch, '__PROJECT_STRIKE_MOBILE_STREAMING__', 'mobile real-asset streaming flag');
+requireText(mobilePatch, "maxConcurrentModelDecodes: mobileSafe ? 1 : null", 'one iPhone model decoder');
+requireText(mobilePatch, "const BACKGROUND_WORLD", 'background world streaming classifier');
+requireText(mobilePatch, "lane = 'critical'", 'critical real-model queue');
+requireText(mobilePatch, "lane: 'background'", 'background world queue');
+requireText(mobilePatch, 'MOBILE_REAL_OPTIC', 'smaller real iPhone optic substitution');
+requireText(mobilePatch, 'realRepositoryModels: true', 'real model diagnostics');
+requireText(mobilePatch, 'viewModelFallback: false', 'fallback not authoritative');
+requireText(mobilePatch, 'grenadeFallback: false', 'real grenade diagnostics');
+requireText(mobilePatch, "productionServiceWorker: 'v11'", 'V11 diagnostics');
 
-// Desktop continues to use and validate the repository asset library. V8 only
-// bypasses these files on actual iOS survival boot.
+requireText(realModelAdapter, 'proceduralViewmodelCountsAsReady: false', 'fallback does not count as ready');
+requireText(realModelAdapter, 'realWeaponRequired: mobileStreaming', 'real weapon requirement');
+requireText(realModelAdapter, 'realArmsRequired: mobileStreaming', 'real arms requirement');
+requireText(realModelAdapter, 'realGrenadesRequired: mobileStreaming', 'real grenade requirement');
+requireText(realModelAdapter, 'RecoilController.prototype.shot', 'touch recoil limiter');
+
+requireText(mobileCss, '#leftPad', 'movement pad input recovery');
+requireText(mobileCss, '#lookZone', 'look-zone input recovery');
+requireText(mobileCss, 'pointer-events: auto', 'interactive HUD descendants');
+requireText(mobileCss, 'touch-action: none', 'native gesture suppression over controls');
+
+requireText(feel, 'Math.ceil(frame / (1 / 120))', 'recoil spring substeps');
+requireText(feel, 'maxVelocity', 'recoil spring velocity bound');
+requireText(feel, 'boundedSpring: true', 'bounded recoil diagnostics');
+
 const glbs = walk(assetRoot).filter(file => file.toLowerCase().endsWith('.glb'));
 if (!glbs.length) throw new Error('No runtime GLB files found.');
 const requiredExtensions = new Set();
@@ -147,13 +167,14 @@ const requiredModels = [
   'models/characters/first_person_arms/free_fps_arms_gameready_-_rigged.glb',
   'models/characters/operators/bamen_military_soldier_animated.glb',
   'models/weapons/rifles/colt_m4a1_carbine.glb',
+  'models/weapons/attachments/crimson_trace_cts-1550_red_dot_sight.glb',
   'models/weapons/pistols/service_pistol.glb',
   'models/environment/buildings/kenney-industrial/enterable/building-a-enterable.glb',
   'models/grenades/high-quality_frag_grenade_3d_model.glb',
   'models/grenades/flashbang.glb'
 ];
 for (const relative of requiredModels) {
-  assertFile(path.join(assetRoot, relative), `desktop runtime model: ${relative}`);
+  assertFile(path.join(assetRoot, relative), `runtime model: ${relative}`);
   if (recoverableLengthMismatch.has(relative)) throw new Error(`Required runtime model cannot be marked recoverable: ${relative}`);
 }
 
@@ -173,8 +194,8 @@ for (const bank of requiredBanks) if (!banks.has(bank)) throw new Error(`Audio m
 
 for (const warning of warnings) console.warn(`Runtime warning: ${warning}`);
 console.log(
-  `Runtime verified: V8 iPhone zero-model survival boot + V10 fresh-cache worker present; ` +
-  `${glbs.length} desktop GLBs inspected, ${diskFiles.length} WAV files indexed; ` +
+  `Runtime verified: V9 real-model iPhone streaming + V11 fresh worker + mobile input/recoil guards present; ` +
+  `${glbs.length} GLBs inspected, ${diskFiles.length} WAV files indexed; ` +
   `CCD IK + AAA feel + physical reactions preserved; required GLB extensions: ` +
   `${[...requiredExtensions].sort().join(', ') || 'none'}, recoverable optional assets: ${warnings.length}.`
 );
