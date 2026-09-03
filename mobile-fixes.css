@@ -1,0 +1,19 @@
+/* V9 mobile input recovery. The HUD intentionally ignores pointer events as a
+   container, so the actual touch surfaces must explicitly opt back in. */
+#leftPad,
+#lookZone {
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#leftPad .stick {
+  pointer-events: none;
+}
+
+/* Keep the aim surface below buttons and the movement pad in the stacking
+   order while still accepting multi-touch on the rest of the right side. */
+#lookZone { z-index: 3; }
+#leftPad { z-index: 5; }
+.buttons { z-index: 13; }
