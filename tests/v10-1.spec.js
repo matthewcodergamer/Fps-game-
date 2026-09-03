@@ -14,6 +14,21 @@ function pointer(type, x, y, pointerId = 21) {
   };
 }
 
+async function stableEvaluate(page, expression) {
+  let lastError = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      return await page.evaluate(expression);
+    } catch (error) {
+      lastError = error;
+      if (!/Execution context was destroyed|navigation/i.test(String(error))) throw error;
+      await page.waitForLoadState('domcontentloaded').catch(() => {});
+      await page.waitForTimeout(300);
+    }
+  }
+  throw lastError;
+}
+
 test('V10.1 renders world, keeps body out of camera, switches real weapons and enables convolution audio', async ({ page }, testInfo) => {
   const errors = [];
   const modelRequests = [];
@@ -24,12 +39,16 @@ test('V10.1 renders world, keeps body out of camera, switches real weapons and e
   });
 
   await page.goto('/?ci=v10.1', { waitUntil: 'domcontentloaded' });
+  const playButton = page.locator('#playBtn');
+  await expect(playButton).toBeVisible({ timeout: 240_000 });
   await page.waitForFunction(() => {
     const button = document.querySelector('#playBtn');
     return Boolean(button && (!button.disabled || button.textContent?.includes('FAILED')));
   }, null, { timeout: 240_000 });
+  await page.waitForTimeout(550);
+  await expect(playButton).toBeVisible({ timeout: 30_000 });
 
-  const startup = await page.evaluate(() => ({
+  const startup = await stableEvaluate(page, () => ({
     disabled: document.querySelector('#playBtn')?.disabled,
     text: document.querySelector('#playBtn')?.textContent,
     error: document.querySelector('#runtimeError')?.textContent,
@@ -47,15 +66,15 @@ test('V10.1 renders world, keeps body out of camera, switches real weapons and e
   expect(startup.diagnostics?.weaponSwitching).toBe('real-repository-models');
   expect(startup.diagnostics?.audioEnvironment).toBe('industrial-convolution');
 
-  await page.locator('#playBtn').click();
+  await playButton.click();
   await expect(page.locator('#hud')).toBeVisible();
   await page.waitForTimeout(250);
-  const audio = await page.evaluate(() => window.__PROJECT_STRIKE_AUDIO_ENVIRONMENT__);
+  const audio = await stableEvaluate(page, () => window.__PROJECT_STRIKE_AUDIO_ENVIRONMENT__);
   expect(audio?.convolution).toBe(true);
   expect(audio?.wet).toBeGreaterThan(0.15);
 
-  const bodyBefore = await page.evaluate(() => window.__PROJECT_STRIKE_TRUE_BODY_CLEARANCE__);
-  expect(bodyBefore?.cameraClearance).toBeGreaterThanOrEqual(0.27);
+  const bodyBefore = await stableEvaluate(page, () => window.__PROJECT_STRIKE_TRUE_BODY_CLEARANCE__);
+  expect(bodyBefore?.cameraClearance).toBeGreaterThanOrEqual(0.44);
 
   const pad = page.locator('#leftPad');
   const padBox = await pad.boundingBox();
@@ -67,12 +86,12 @@ test('V10.1 renders world, keeps body out of camera, switches real weapons and e
   await page.waitForTimeout(250);
   await page.locator('#slideBtn').click();
   await page.waitForTimeout(140);
-  const bodySlide = await page.evaluate(() => ({
+  const bodySlide = await stableEvaluate(page, () => ({
     clearance: window.__PROJECT_STRIKE_TRUE_BODY_CLEARANCE__,
     player: window.__PROJECT_STRIKE_PLAYER_STATE__
   }));
   expect(bodySlide.clearance?.slideWeight).toBeGreaterThan(0.2);
-  expect(bodySlide.clearance?.cameraClearance).toBeGreaterThan(0.32);
+  expect(bodySlide.clearance?.cameraClearance).toBeGreaterThan(0.5);
   await pad.dispatchEvent('pointerup', pointer('pointerup', cx, cy - padBox.height * .31));
 
   const beforeWeapon = await page.locator('#weaponName').textContent();
@@ -81,8 +100,8 @@ test('V10.1 renders world, keeps body out of camera, switches real weapons and e
   const afterWeapon = await page.locator('#weaponName').textContent();
   expect(afterWeapon).not.toBe(beforeWeapon);
   const switched = modelRequests.join('\n');
-  expect(switched).toMatch(/m4_carbine\.glb|ak74\.glb|scarl\.glb/i);
-  const switchedDiag = await page.evaluate(() => window.__PROJECT_STRIKE_IK__);
+  expect(switched).toMatch(/ak74\.glb|scarl\.glb|vss\.glb/i);
+  const switchedDiag = await stableEvaluate(page, () => window.__PROJECT_STRIKE_IK__);
   expect(switchedDiag?.active).toBe(true);
 
   const screenshot = testInfo.outputPath('v10-1-world-visible.png');
