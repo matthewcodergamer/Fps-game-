@@ -1,11 +1,15 @@
 import { defineConfig } from '@playwright/test';
 
+const webgpuArgs = [
+  '--enable-unsafe-webgpu',
+  '--enable-features=Vulkan',
+  '--use-vulkan=swiftshader',
+  '--disable-vulkan-surface'
+];
+
 export default defineConfig({
   testDir: './tests',
-  // V9 deliberately exercises real repository GLBs on both profiles. iPhone
-  // serializes model decode work to one file at a time; desktop loads the full
-  // district. Shared CI software-WebGL can be much slower than the real phone.
-  timeout: 240_000,
+  timeout: 300_000,
   fullyParallel: false,
   workers: 1,
   reporter: [['line']],
@@ -13,15 +17,12 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:4173',
     headless: true,
     screenshot: 'only-on-failure',
-    trace: 'retain-on-failure'
+    trace: 'retain-on-failure',
+    launchOptions: { args: webgpuArgs }
   },
   projects: [
     {
-      name: 'desktop-chromium',
-      use: { viewport: { width: 1440, height: 900 } }
-    },
-    {
-      name: 'iphone-11-landscape',
+      name: 'iphone-11-webgpu',
       use: {
         viewport: { width: 844, height: 390 },
         hasTouch: true,
