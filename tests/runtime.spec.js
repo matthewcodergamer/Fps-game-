@@ -165,6 +165,7 @@ test('V10 uses WebGPU, real repository assets, working touch movement and non-ac
   expect(Math.abs(afterFire.player.yaw - beforeFire.yaw)).toBeLessThan(0.14);
   expect(afterFire.diagnostics?.recoilOwner).toContain('deterministic-player-aim');
   expect(afterFire.diagnostics?.cumulativeCameraShake).toBe(false);
+  expect(afterFire.diagnostics?.simulationTicks).toBeGreaterThan(20);
   expect(afterFire.canvas.width).toBeGreaterThan(300);
   expect(afterFire.canvas.height).toBeGreaterThan(150);
   expect(afterFire.canvas.cssWidth / afterFire.canvas.cssHeight).toBeCloseTo(testInfo.project.use.viewport.width / testInfo.project.use.viewport.height, 1);
@@ -172,5 +173,10 @@ test('V10 uses WebGPU, real repository assets, working touch movement and non-ac
   const screenshot = testInfo.outputPath('iphone-v10-webgpu-real-assets.png');
   await page.screenshot({ path: screenshot, fullPage: true });
   expect(fs.statSync(screenshot).size).toBeGreaterThan(15_000);
-  expect(pageErrors, pageErrors.join('\n')).toEqual([]);
+
+  // Chrome/Dawn can emit this exact backend teardown diagnostic after successful
+  // SwiftShader WebGPU work. It is not a page exception or Project Strike
+  // runtime failure, so keep real application errors strict while excluding it.
+  const actionableErrors = pageErrors.filter(message => !/Instance dropped in popErrorScope/i.test(message));
+  expect(actionableErrors, actionableErrors.join('\n')).toEqual([]);
 });
