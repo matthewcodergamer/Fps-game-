@@ -38,8 +38,6 @@ if (!source.includes("movementSource: movement.source")) {
   );
 }
 
-// Pointer capture can throw when Safari's browser chrome or a synthetic test
-// interrupts the active pointer. Input state must survive that condition.
 for (const [before, after, label] of [
   [
     `      pad.setPointerCapture?.(event.pointerId);\n      event.preventDefault();`,
@@ -71,15 +69,35 @@ if (!source.includes("frameDriver: 'requestAnimationFrame-after-webgpu-init'")) 
 if (source.includes('  renderer.setAnimationLoop(() => {')) {
   replaceOnce(
 `  renderer.setAnimationLoop(() => {\n    const dt = Math.min(1 / 30, clock.getDelta());\n    if (started) {\n      updatePlayer(dt);\n      player.cooldown = Math.max(0, player.cooldown - dt);\n      if (firing) shoot();\n    } else {\n      camera.position.set(0, 2.05, 13);\n      camera.rotation.set(-0.025, 0, 0, 'YXZ');\n      view.update(dt, { time: performance.now() * 0.001, speed: 0, stepPhase: 0 });\n    }\n\n    arena.update(dt, performance.now() * 0.001);\n    grenades.update(dt, arena, player.pos);\n    vfx.update(dt);\n\n    renderer.autoClear = true;\n    renderer.render(scene, camera);\n    renderer.autoClear = false;\n    renderer.clearDepth();\n    view.render(renderer);\n    renderer.autoClear = true;\n\n    fpsFrames++;\n    fpsElapsed += dt;\n    if (fpsElapsed >= 0.5) {\n      $('#fps').textContent = \`${'${Math.round(fpsFrames / fpsElapsed)}'} FPS\`;\n      fpsFrames = 0;\n      fpsElapsed = 0;\n    }\n  });`,
-`  let frameHandle = 0;\n  let frameFatal = false;\n  function frame() {\n    if (frameFatal) return;\n    // renderer.init() completed above, so Three.js supports an ordinary rAF\n    // driver here. Schedule the successor before WebGPU work so gameplay input\n    // cannot silently stop at the loading -> Deploy transition.\n    frameHandle = requestAnimationFrame(frame);\n    const dt = Math.min(1 / 30, clock.getDelta());\n    if (started) {\n      updatePlayer(dt);\n      player.cooldown = Math.max(0, player.cooldown - dt);\n      if (firing) shoot();\n    } else {\n      camera.position.set(0, 2.05, 13);\n      camera.rotation.set(-0.025, 0, 0, 'YXZ');\n      view.update(dt, { time: performance.now() * 0.001, speed: 0, stepPhase: 0 });\n    }\n\n    arena.update(dt, performance.now() * 0.001);\n    grenades.update(dt, arena, player.pos);\n    vfx.update(dt);\n\n    try {\n      renderer.autoClear = true;\n      renderer.render(scene, camera);\n      renderer.autoClear = false;\n      renderer.clearDepth();\n      view.render(renderer);\n      renderer.autoClear = true;\n    } catch (error) {\n      frameFatal = true;\n      cancelAnimationFrame(frameHandle);\n      fatal(error);\n      return;\n    }\n\n    fpsFrames++;\n    fpsElapsed += dt;\n    if (fpsElapsed >= 0.5) {\n      $('#fps').textContent = \`${'${Math.round(fpsFrames / fpsElapsed)}'} FPS\`;\n      fpsFrames = 0;\n      fpsElapsed = 0;\n    }\n  }\n  frame();`,
+`  let frameHandle = 0;\n  let frameFatal = false;\n  function frame() {\n    if (frameFatal) return;\n    frameHandle = requestAnimationFrame(frame);\n    const dt = Math.min(1 / 30, clock.getDelta());\n    if (!started) {\n      camera.position.set(0, 2.05, 13);\n      camera.rotation.set(-0.025, 0, 0, 'YXZ');\n      view.update(dt, { time: performance.now() * 0.001, speed: 0, stepPhase: 0 });\n    }\n    arena.update(dt, performance.now() * 0.001);\n    vfx.update(dt);\n    try {\n      renderer.autoClear = true;\n      renderer.render(scene, camera);\n      renderer.autoClear = false;\n      renderer.clearDepth();\n      view.render(renderer);\n      renderer.autoClear = true;\n    } catch (error) {\n      frameFatal = true;\n      cancelAnimationFrame(frameHandle);\n      fatal(error);\n      return;\n    }\n    fpsFrames++;\n    fpsElapsed += dt;\n    if (fpsElapsed >= 0.5) {\n      $('#fps').textContent = \`${'${Math.round(fpsFrames / fpsElapsed)}'} FPS\`;\n      fpsFrames = 0;\n      fpsElapsed = 0;\n    }\n  }\n  frame();`,
     'WebGPU gameplay frame loop'
   );
 }
 
+if (!source.includes("simulationDriver: 'fixed-timer-independent-of-render'")) {
+  replaceOnce(
+`    frameDriver: 'requestAnimationFrame-after-webgpu-init',\n    realRepositoryModels: true,`,
+`    frameDriver: 'requestAnimationFrame-after-webgpu-init',\n    simulationDriver: 'fixed-timer-independent-of-render',\n    realRepositoryModels: true,`,
+    'simulation driver diagnostics'
+  );
+}
+
+if (!source.includes('function simulationTick()')) {
+  const insertionPoint = `  playButton.onclick = async () => {\n`;
+  const simulation = `  let simulationLast = performance.now();\n  let simulationTicks = 0;\n  function simulationTick() {\n    const now = performance.now();\n    const dt = Math.min(1 / 30, Math.max(1 / 240, (now - simulationLast) / 1000));\n    simulationLast = now;\n    if (started) {\n      updatePlayer(dt);\n      player.cooldown = Math.max(0, player.cooldown - dt);\n      if (firing) shoot();\n      grenades.update(dt, arena, player.pos);\n      simulationTicks++;\n      if (globalThis.__PROJECT_STRIKE_DIAGNOSTICS__) {\n        globalThis.__PROJECT_STRIKE_DIAGNOSTICS__.simulationTicks = simulationTicks;\n        globalThis.__PROJECT_STRIKE_DIAGNOSTICS__.lastSimulationAt = now;\n      }\n    }\n  }\n  const simulationTimer = setInterval(simulationTick, 1000 / 60);\n  addEventListener('pagehide', () => clearInterval(simulationTimer), { once: true });\n\n`;
+  replaceOnce(insertionPoint, simulation + insertionPoint, 'fixed simulation loop');
+}
+
+// Once a fixed simulation owns gameplay, remove duplicate gameplay updates from
+// the presentation frame if a previous migration already installed them.
+const oldRafGameplay = `    if (started) {\n      updatePlayer(dt);\n      player.cooldown = Math.max(0, player.cooldown - dt);\n      if (firing) shoot();\n    } else {\n      camera.position.set(0, 2.05, 13);\n      camera.rotation.set(-0.025, 0, 0, 'YXZ');\n      view.update(dt, { time: performance.now() * 0.001, speed: 0, stepPhase: 0 });\n    }\n\n    arena.update(dt, performance.now() * 0.001);\n    grenades.update(dt, arena, player.pos);\n    vfx.update(dt);`;
+const newRafPresentation = `    if (!started) {\n      camera.position.set(0, 2.05, 13);\n      camera.rotation.set(-0.025, 0, 0, 'YXZ');\n      view.update(dt, { time: performance.now() * 0.001, speed: 0, stepPhase: 0 });\n    }\n    arena.update(dt, performance.now() * 0.001);\n    vfx.update(dt);`;
+if (source.includes(oldRafGameplay)) replaceOnce(oldRafGameplay, newRafPresentation, 'decouple gameplay from rAF');
+
 if (!changed) {
-  console.log('V10 movement and WebGPU frame wiring are already installed.');
+  console.log('V10 authoritative input, fixed simulation, and WebGPU presentation wiring are already installed.');
   process.exit(0);
 }
 
 fs.writeFileSync(path, source);
-console.log('Installed V10 authoritative input and requestAnimationFrame WebGPU driver.');
+console.log('Installed V10 authoritative input, fixed simulation, and independent WebGPU presentation.');
