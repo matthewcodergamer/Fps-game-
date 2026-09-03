@@ -1,142 +1,199 @@
-# Project Strike
+# Project Strike V10
 
-Project Strike is a browser tactical FPS built with Three.js. The current **V9 real-asset streaming build** keeps the repository's real rigged characters, weapons, grenades, industrial environment and audio while changing how memory-constrained iPhones receive those assets.
+Project Strike is a browser tactical FPS built with Three.js. **V10** is the current production architecture: WebGPU-first rendering, a strict real-asset loading gate, real repository weapons/arms/grenades/operators/body/buildings, CCD hand IK, authoritative mobile movement, bounded recoil, and GPU-driven weapon smoke/sparks.
 
-## Play
+## Current version
 
-GitHub Pages:
+- **Game:** Project Strike V10
+- **Package release:** `10.0.0`
+- **Renderer:** Three.js `WebGPURenderer` / WebGPU
+- **Production URL:** `https://matthewcodergamer.github.io/Fps-game-/?v=10`
+- **Required-art policy:** required gameplay art must load successfully; primitive weapon/grenade/body/operator fallbacks do not count as a successful V10 boot.
 
-`https://matthewcodergamer.github.io/Fps-game-/?v=9`
+The in-game loading screen and HUD show **V10**.
 
-A fresh V9 page shows:
+## V10 goals
 
-`V9 REAL ASSET STREAMING · ONE GLB DECODE · WEBGL2`
+V10 replaces the layered V8/V9 recovery architecture with one production path focused on:
 
-## What V9 fixes
+- real high-quality repository GLBs;
+- WebGPU rather than silently dropping to WebGL;
+- a real loading gate before gameplay;
+- stable mobile movement;
+- stable firing/recoil with one camera-aim owner;
+- real rigged first-person arms and weapon IK;
+- GPU-compute smoke/sparks;
+- serialized model decoding and lower peak memory on iPhone-class devices.
 
-The V8 emergency build stopped a real iPhone Safari crash by rejecting every GLB/GLTF/FBX on iOS and using procedural recovery geometry. That proved the crash was in the heavy model-decode startup path, but the visual result was intentionally temporary.
+## Implemented
 
-V9 restores the real art while preserving the useful stability lessons:
+### WebGPU renderer
 
-- the iPhone model decoder is serialized to **one model at a time**;
-- critical character/viewmodel assets have priority over district dressing;
-- background buildings and props stream into holders after their real GLBs finish;
-- decoded source-model cache references are evicted after mobile clones are created;
-- large model/audio/texture responses are streamed directly and are not duplicated in Service Worker Cache Storage;
-- shadow-map VRAM remains disabled on iPhone while real PBR meshes still render;
-- the old 2.6 MB holo optic that coincided with the Safari crash is replaced **on iPhone only** by the smaller real Crimson Trace repository GLB;
-- desktop keeps the full repository quality path.
+V10 initializes Three.js `WebGPURenderer`, waits for initialization, and verifies that the active backend is genuinely WebGPU. If the browser cannot provide WebGPU, V10 reports a startup error instead of silently pretending WebGL is WebGPU.
 
-## Real authoritative assets
+Rendering keeps sRGB output and ACES Filmic tone mapping. Touch/iPhone paths use a conservative render scale and disable shadow maps to reduce GPU-memory pressure while retaining the real PBR models.
 
-V9 requires these repository models instead of counting block geometry as successful art:
+### Proper loading gate
+
+The boot screen is opaque and reports the current asset, percentage, progress bar, and renderer state. **DEPLOY stays disabled until the required V10 content is resident and the WebGPU shaders are compiled.**
+
+The gate requires:
+
+- real rigged FPS arms;
+- real Colt M4A1 GLB;
+- real optic;
+- real animated world operator;
+- real skinned local body;
+- real frag grenade;
+- real flashbang;
+- required industrial district/building GLBs;
+- working CCD hand IK;
+- WebGPU smoke/spark buffers;
+- WebGPU shader compilation.
+
+### Real authoritative models
+
+Important repository assets include:
 
 - `public/game-assets/models/characters/first_person_arms/free_fps_arms_gameready_-_rigged.glb`
 - `public/game-assets/models/weapons/rifles/colt_m4a1_carbine.glb`
-- `public/game-assets/models/weapons/attachments/crimson_trace_cts-1550_red_dot_sight.glb` on iPhone
-- `public/game-assets/models/weapons/attachments/free_pbr_holo_sight_optics._cheerr.glb` on desktop
-- `public/game-assets/models/characters/operators/bamen_military_soldier_animated.glb` for world operators
-- `public/game-assets/models/characters/operators/bamen_military_soldier.glb` for the local true-first-person body
+- repository weapon optic GLBs
+- `public/game-assets/models/characters/operators/bamen_military_soldier_animated.glb`
+- `public/game-assets/models/characters/operators/bamen_military_soldier.glb`
 - `public/game-assets/models/grenades/high-quality_frag_grenade_3d_model.glb`
 - `public/game-assets/models/grenades/flashbang.glb`
-- enterable industrial buildings under `public/game-assets/models/environment/buildings/`
+- industrial buildings/environment GLBs under `public/game-assets/models/environment/`
 
-The BAMEN soldier attribution/license is kept beside the model in `public/game-assets/models/characters/operators/BAMEN_LICENSE.md`.
+The BAMEN attribution/license remains beside the operator assets.
 
-## Mobile movement fix
+### iPhone asset/memory strategy
 
-The HUD container deliberately uses `pointer-events: none` so it does not eat the whole screen. The action buttons already opted back into pointer events, but the movement pad and look surface did not. That is why Fire/ADS could work while the joystick could not move the player.
+V10 keeps the real models but changes how they are loaded:
 
-`mobile-fixes.css` explicitly restores interaction on `#leftPad` and `#lookZone`, sets `touch-action: none`, keeps the joystick knob non-interactive, and preserves the button stacking order.
+- heavy model decoding is serialized instead of allowing many GLBs to decode simultaneously;
+- large model/audio/texture responses are streamed directly instead of being duplicated into service-worker Cache Storage;
+- V12 service-worker logic removes stale Project Strike cache generations and avoids large-response cloning;
+- shader compilation happens before Deploy so the first shot/frame does not create a large compile spike;
+- the game does not count block/primitive visual substitutions as successful required-asset loads.
 
-## Bounded recoil
+A real iPhone Safari device can still have WebKit-specific memory limits that Chromium emulation cannot reproduce, so real-device profiling remains part of the optimization plan.
 
-The previous AAA recoil layer used a high-frequency explicit spring with raw frame time. A dropped Safari frame could make the numerical spring unstable, producing the violent up/down camera oscillation seen on the real phone.
+### Mobile movement fix
 
-V9 changes `src/gameplay/AAAFeelSystem.js` to:
+The V10 browser regression found the exact movement failure: the joystick bridge had a valid analog value, but the game simulation was not consuming it. V10 now uses an **authoritative analog movement bridge** and reads live X/Y directly every simulation tick.
 
-- clamp frame time;
-- sub-step recoil integration to no more than 1/120 second per spring step;
-- hard-bound spring value and velocity;
-- reduce mobile camera concussion while retaining visible weapon kick;
-- cap per-frame camera pitch/yaw/roll and FOV presentation offsets.
+The left movement pad and right look surface explicitly receive Pointer Events, including pointer capture/release handling. Desktop WASD remains independent.
 
-The gameplay `RecoilController` still owns persistent aim recoil, but its mobile kick is reduced so it does not stack excessively with presentation recoil.
+### Recoil and firing fix
 
-## Real true-first-person body
+V10 removes the stacked recoil ownership that caused the camera/gun to rotate continuously or shake violently.
 
-V8's local torso/legs were capsule/box geometry. V9's `TrueBodyRig` loads the real rigged BAMEN soldier after Deploy through the same serialized `AssetManager` queue. It hides the head and upper-arm bone branches so the camera and dedicated FPS arm rig stay clean, then drives the real Mixamo hips/spine/leg/foot bones for stride and ground placement.
+- Player pitch/yaw are authoritative.
+- Camera rotation is rebuilt every simulation frame from the current player aim.
+- Persistent aim recoil is small and deterministic.
+- Physical weapon kick is separate and bounded in the viewmodel.
+- Presentation code does not accumulate camera Euler rotations indefinitely.
 
-If that model genuinely fails, the local body is hidden instead of silently presenting block geometry as final art.
+The V10 WebGPU browser regression fires repeatedly and checks that recoil remains finite/bounded.
 
-## Inverse kinematics
+### First-person arms and inverse kinematics
 
 First-person hand IK uses Three.js `CCDIKSolver` through `src/animation/CharacterIKRig.js`.
 
 The solve order is:
 
 ```text
-authored/procedural pose
-        ↓
-weapon sway / recoil / free aim
-        ↓
-physical weapon sockets
-        ↓
-right/left hand CCD correction
-        ↓
-render foreground weapon + arms
+base/authored pose
+      ↓
+weapon motion / physical kick
+      ↓
+weapon grip sockets
+      ↓
+CCD hand correction
+      ↓
+foreground render
 ```
 
-Weapon sockets include right grip, left grip, muzzle, optic, ejection, magazine grip and charging handle. Reload logic can retarget the left hand to the magazine/charging handle.
+Weapon sockets include right grip, left grip, muzzle, optic, ejection, magazine grip, and charging handle. V10 keeps the loading gate locked if the required IK chain cannot bind.
 
-## Physical reactions
+### Real grenades
 
-Project Strike includes its own web-native positional reaction system: limb hit zones and health, stagger/limp state, heavy-hit dismemberment proxies, bone hiding where the imported skeleton supports it, stump meshes, impact/blood particles and explosion reactions.
+Frag and flash use their repository GLBs. V10 does not accept primitive grenade geometry as the final successful path.
 
-This is **not** Rockstar NaturalMotion Euphoria and the project does not claim to contain proprietary Rockstar, Call of Duty, Unreal Engine, REDengine or other commercial-engine code.
+Grenades include throw velocity, gravity, bounce damping, collision audio, timed detonation, dynamic flash/explosion light, and flash-screen/audio effects.
 
-## Rendering architecture
+### Real local body and operators
 
-Project Strike uses WebGL2/Three.js features that are practical in a browser:
+World targets use the animated BAMEN operator. The local first-person body uses the real skinned BAMEN model rather than capsule/box presentation geometry, with first-person visibility adjustments to prevent head/duplicate upper-body camera clipping.
 
-- sRGB output and ACES filmic tone mapping;
-- PBR materials from repository GLBs;
-- desktop PMREM/environment reflections and restrained bloom;
-- mobile direct-PBR rendering with a lower render scale;
-- directional, hemisphere and practical cyberpunk lighting;
-- separate first-person render pass so weapon geometry does not disappear into walls;
-- frustum culling and streamed background model holders.
+### GPU weapon effects
 
-It does not claim UE5 Lumen, Nanite, hardware path tracing or RTX.
+`src/rendering/GPUWeaponVFX.js` implements the V10 WebGPU/TSL particle path.
 
-## Audio
+- smoke and sparks use GPU storage arrays and compute passes;
+- large particle state does not require a JavaScript object update loop every frame;
+- effects originate from the real muzzle transform;
+- firing combines muzzle light, smoke/sparks, ballistic raycast, weapon kick, hit feedback, and repository audio.
 
-The repository contains 1,990 indexed WAV files in `public/game-assets/audio/audio-manifest.json`. Safari audio unlocks from the Deploy gesture. V9 keeps large prewarm work lazy on iPhone so model decoding and audio decoding do not peak at the same moment.
+The next VFX pass is depth-faded soft smoke, curl-noise turbulence, higher-quality smoke textures/volumes, HDR muzzle-flash cards, and WebGPU-compatible bloom.
+
+### Audio
+
+The repository audio system remains active. Safari/browser audio is unlocked by the Deploy gesture. Weapon shot, mechanical, collision and explosion layers stay separate, while heavy audio work is kept away from the critical model-decoding peak where possible.
+
+### Environment
+
+V10 requires real industrial environment models for the core district. Real enterable buildings, barriers, crates, boulders, collision surfaces and cyber/industrial lighting are part of the architecture. Three.js frustum culling remains active.
+
+## Validation status
+
+Before V10 was moved to `main`, the branch passed:
+
+1. syntax, runtime-contract, GLB, audio-manifest and production Vite/WebGPU build validation;
+2. an iPhone-sized WebGPU interaction regression that checks:
+   - genuine WebGPU backend;
+   - real M4A1/arms/body/operators/frag/flash/district asset path;
+   - mobile analog movement changing player coordinates;
+   - repeated firing without runaway camera rotation;
+   - finite pitch/yaw/recoil state;
+   - active CCD hand IK;
+   - initialized GPU weapon VFX.
 
 ## Controls
 
-Desktop: WASD, mouse, Shift sprint, Space jump, C/Ctrl slide/crouch, R reload, left mouse fire, right mouse ADS, weapon switch, G frag, V flash.
+**Desktop:** WASD, mouse, Shift sprint, Space jump, C/Ctrl slide/crouch, R reload, left mouse fire, right mouse ADS, G frag, V flash.
 
-Mobile: left movement pad, right-side look, Fire, ADS, Reload, Jump, Slide/Crouch, Swap, Frag and Flash.
+**Mobile:** left analog movement pad, right look surface, Fire, ADS, Reload, Jump, Slide/Crouch, Swap, Frag, Flash.
 
-Controller: left/right sticks, RT fire, LT ADS, L3 sprint, A/Cross jump, B/Circle slide, X/Square reload, Y/Triangle swap.
-
-## Asset sourcing
-
-See `docs/ASSET_SOURCING_V9.md` for the current source/quality strategy. V9 retains the existing higher-detail BAMEN combat operator instead of downgrading it, and records CC0 candidates such as Quaternius Universal Base Characters / Universal Animation Library for future civilian/operator variety and retargetable animation expansion.
-
-## Run and verify
+## Run locally
 
 ```bash
 npm ci
 npm run dev
 ```
 
-Production gates:
+Production checks:
 
 ```bash
 npm run check
 npm run test:browser
 ```
 
-`npm run check` validates the V9/V11 boot architecture, GLB integrity, real required assets, mobile input and bounded-recoil invariants, audio manifest and production Vite build. The browser suite exercises desktop and an iPhone 11 landscape profile and verifies the real-model request path, touch-control CSS, finite recoil state and a live WebGL2 context.
+## Next implementation priorities
+
+1. Profile V10 on the physical iPhone 11 and tune model/texture residency from real Safari memory behavior.
+2. Add depth-buffer soft particles, curl-noise smoke turbulence and improved lit smoke textures/volumes.
+3. Add HDR muzzle-flash cards and a WebGPU/TSL-compatible bloom/exposure pass.
+4. Upgrade asphalt, concrete, glass, metal, grime and road materials with high-quality licensed/CC0 PBR assets.
+5. Validate every secondary weapon for model orientation, sockets, muzzle, optic, magazine and animation behavior.
+6. Expand animation layering: locomotion, tactical reload, empty reload/bolt, flinch, grenade throw and weapon-specific sequences.
+7. Improve two-foot IK with pelvis compensation for slopes, curbs and stairs.
+8. Extend Rapier-based physical reactions/ragdoll blending within an iPhone-safe rigid-body budget.
+9. Add indoor/outdoor Web Audio convolution and more surface-specific shell/impact responses.
+10. Add explicit texture/mesh LOD, KTX2/Basis where appropriate, and distance-based asset residency.
+
+For the detailed implementation checklist, see [`docs/V10_IMPLEMENTATION_STATUS.md`](docs/V10_IMPLEMENTATION_STATUS.md).
+
+## Project scope note
+
+Project Strike is its own browser game. It does not claim to contain Rockstar NaturalMotion Euphoria, REDengine, Call of Duty engine code, Unreal Engine Lumen/Nanite, RTX path tracing, or other proprietary commercial-engine technology. V10 implements web-native approximations using Three.js, WebGPU, Web Audio, repository assets and project-owned gameplay code.
