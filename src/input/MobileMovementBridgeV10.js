@@ -2,55 +2,46 @@ const state = {
   activePointer: null,
   pointerType: null,
   keys: new Set(),
-  bound: false
+  bound: false,
+  x: 0,
+  y: 0
 };
 
-function dispatchKey(code, down) {
-  const type = down ? 'keydown' : 'keyup';
-  window.dispatchEvent(new KeyboardEvent(type, {
-    code,
-    key: code === 'KeyW' ? 'w' : code === 'KeyS' ? 's' : code === 'KeyA' ? 'a' : 'd',
-    bubbles: true,
-    cancelable: true
-  }));
-}
+function publish(x = state.x, y = state.y) {
+  state.x = Number.isFinite(x) ? x : 0;
+  state.y = Number.isFinite(y) ? y : 0;
+  const deadZone = 0.16;
+  const keys = [];
+  if (state.y < -deadZone) keys.push('KeyW');
+  if (state.y > deadZone) keys.push('KeyS');
+  if (state.x < -deadZone) keys.push('KeyA');
+  if (state.x > deadZone) keys.push('KeyD');
+  state.keys = new Set(keys);
 
-function setKeys(next) {
-  for (const code of state.keys) {
-    if (!next.has(code)) dispatchKey(code, false);
-  }
-  for (const code of next) {
-    if (!state.keys.has(code)) dispatchKey(code, true);
-  }
-  state.keys = next;
+  // V10 consumes x/y directly every frame. Do not translate touch movement
+  // through synthetic KeyboardEvents: WebKit and headless WebGPU browsers can
+  // legitimately treat constructed key events differently from real hardware.
+  globalThis.__PROJECT_STRIKE_MOBILE_INPUT_BRIDGE__ = {
+    active: Math.hypot(state.x, state.y) > deadZone,
+    keys,
+    x: state.x,
+    y: state.y,
+    pointerType: state.pointerType,
+    captureIndependent: true,
+    analogAuthoritative: true,
+    installed: state.bound
+  };
 }
 
 function reset() {
   state.activePointer = null;
   state.pointerType = null;
-  setKeys(new Set());
-  globalThis.__PROJECT_STRIKE_MOBILE_INPUT_BRIDGE__ = {
-    active: false,
-    keys: [],
-    captureIndependent: true
-  };
+  state.keys.clear();
+  publish(0, 0);
 }
 
 function applyVector(x, y) {
-  const deadZone = 0.16;
-  const next = new Set();
-  if (y < -deadZone) next.add('KeyW');
-  if (y > deadZone) next.add('KeyS');
-  if (x < -deadZone) next.add('KeyA');
-  if (x > deadZone) next.add('KeyD');
-  setKeys(next);
-  globalThis.__PROJECT_STRIKE_MOBILE_INPUT_BRIDGE__ = {
-    active: next.size > 0,
-    keys: [...next],
-    x,
-    y,
-    captureIndependent: true
-  };
+  publish(x, y);
 }
 
 function vectorFromPoint(pad, clientX, clientY) {
@@ -68,6 +59,8 @@ export function installMobileMovementBridgeV10() {
   const pad = document.querySelector('#leftPad');
   if (!pad) return;
   state.bound = true;
+  pad.style.pointerEvents = 'auto';
+  pad.style.touchAction = 'none';
 
   const begin = (pointerId, pointerType, clientX, clientY) => {
     if (state.activePointer != null && state.activePointer !== pointerId) return;
@@ -90,16 +83,20 @@ export function installMobileMovementBridgeV10() {
 
   pad.addEventListener('pointerdown', event => {
     begin(event.pointerId, event.pointerType || 'pointer', event.clientX, event.clientY);
+    try { pad.setPointerCapture?.(event.pointerId); } catch {}
     event.preventDefault();
   }, { passive: false });
 
+  // Capture on window makes the stick survive fingers leaving the visual pad,
+  // VisualViewport shifts, and Safari chrome appearing/disappearing.
   window.addEventListener('pointermove', event => {
     move(event.pointerId, event.clientX, event.clientY);
   }, { passive: true, capture: true });
   window.addEventListener('pointerup', event => end(event.pointerId), { passive: true, capture: true });
   window.addEventListener('pointercancel', event => end(event.pointerId), { passive: true, capture: true });
 
-  // Safari fallback for cases where Pointer Events are interrupted by browser UI.
+  // Native Touch Events remain only as an input compatibility path. They are
+  // not a rendering/model fallback and still feed the same authoritative x/y.
   pad.addEventListener('touchstart', event => {
     if (state.activePointer != null) return;
     const touch = event.changedTouches[0];
@@ -123,10 +120,5 @@ export function installMobileMovementBridgeV10() {
   window.addEventListener('blur', reset);
   document.addEventListener('visibilitychange', () => { if (document.hidden) reset(); });
 
-  globalThis.__PROJECT_STRIKE_MOBILE_INPUT_BRIDGE__ = {
-    active: false,
-    keys: [],
-    captureIndependent: true,
-    installed: true
-  };
+  publish(0, 0);
 }
