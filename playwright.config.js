@@ -3,19 +3,23 @@ import { defineConfig } from '@playwright/test';
 const webgpuArgs = [
   '--enable-unsafe-webgpu',
   '--enable-features=Vulkan',
+  '--use-angle=vulkan',
   '--use-vulkan=swiftshader',
-  '--disable-vulkan-surface'
+  '--use-webgpu-adapter=swiftshader',
+  '--disable-vulkan-surface',
+  '--ignore-gpu-blocklist',
+  '--disable-dev-shm-usage'
 ];
 
 export default defineConfig({
   testDir: './tests',
-  timeout: 300_000,
+  timeout: 120_000,
   fullyParallel: false,
   workers: 1,
   reporter: [['line']],
   use: {
     baseURL: 'http://127.0.0.1:4173',
-    headless: true,
+    headless: false,
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
     launchOptions: { args: webgpuArgs }

@@ -62,5 +62,7 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
+      - name: Install software WebGPU runtime
+        run: sudo apt-get update && sudo apt-get install -y libvulkan1 mesa-vulkan-drivers xvfb xauth
       - name: Verify Babylon WebGPU + Havok boot
-        run: npm run test:browser
+        run: xvfb-run -a -s '-screen 0 1280x720x24' npm run test:browser
