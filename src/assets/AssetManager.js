@@ -8,6 +8,13 @@ const MODEL_EXT = /\.([a-z0-9]+)(?:[?#].*)?$/i;
 const IOS_DEVICE = /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
 const COARSE_POINTER = matchMedia('(any-pointer: coarse)').matches;
 const MEMORY_SAFE = Boolean(globalThis.__PROJECT_STRIKE_MOBILE_SAFE__ || (IOS_DEVICE && COARSE_POINTER));
+const TEXTURE_KEYS = [
+  'map', 'emissiveMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap',
+  'alphaMap', 'bumpMap', 'displacementMap', 'lightMap', 'clearcoatMap',
+  'clearcoatNormalMap', 'clearcoatRoughnessMap', 'sheenColorMap',
+  'sheenRoughnessMap', 'specularColorMap', 'specularIntensityMap',
+  'transmissionMap', 'thicknessMap', 'iridescenceMap', 'iridescenceThicknessMap'
+];
 
 function extensionOf(url) {
   return String(url).match(MODEL_EXT)?.[1]?.toLowerCase() || '';
@@ -33,15 +40,27 @@ function clampProgress(event = {}) {
   return { ...event, loaded: Math.min(loaded, total), total };
 }
 
+function configureTexture(texture, anisotropy, { color = false, mobile = false } = {}) {
+  if (!texture?.isTexture) return;
+  if (color) texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = anisotropy;
+  if (mobile) {
+    // Do not ask WebGPU to generate mip chains on memory-constrained mobile
+    // devices. Besides reducing transient GPU memory, this avoids the newer
+    // texture-view swizzle mipmap path that is not implemented consistently by
+    // every Safari/Chromium WebGPU backend yet. This changes filtering only;
+    // the real source texture and real 3D model remain authoritative.
+    texture.generateMipmaps = false;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+  }
+  texture.needsUpdate = true;
+}
+
 function cloneMaterial(material, anisotropy) {
   const next = material.clone();
-  for (const key of ['map', 'emissiveMap']) {
-    if (!next[key]) continue;
-    next[key].colorSpace = THREE.SRGBColorSpace;
-    next[key].anisotropy = anisotropy;
-  }
-  for (const key of ['normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']) {
-    if (next[key]) next[key].anisotropy = anisotropy;
+  for (const key of TEXTURE_KEYS) {
+    configureTexture(next[key], anisotropy, { color: key === 'map' || key === 'emissiveMap' });
   }
   if ('envMapIntensity' in next) next.envMapIntensity = Math.max(.7, next.envMapIntensity || 1);
   next.needsUpdate = true;
@@ -50,13 +69,11 @@ function cloneMaterial(material, anisotropy) {
 
 function prepareSharedMaterial(material, anisotropy) {
   if (!material) return material;
-  for (const key of ['map', 'emissiveMap']) {
-    if (!material[key]) continue;
-    material[key].colorSpace = THREE.SRGBColorSpace;
-    material[key].anisotropy = anisotropy;
-  }
-  for (const key of ['normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']) {
-    if (material[key]) material[key].anisotropy = anisotropy;
+  for (const key of TEXTURE_KEYS) {
+    configureTexture(material[key], anisotropy, {
+      color: key === 'map' || key === 'emissiveMap',
+      mobile: true
+    });
   }
   if ('envMapIntensity' in material) material.envMapIntensity = Math.max(.62, material.envMapIntensity || 1);
   material.needsUpdate = true;
