@@ -194,8 +194,14 @@ export async function createRealisticDistrictV10(scene, assets, {
     new THREE.Vector3(0, 0.12, -14),
     new THREE.Vector3(-9, 0.12, -26)
   ];
+
+  // Clone every skinned operator from a pristine template BEFORE attaching
+  // target Object3D references to mesh.userData. Three.js deep-copies userData
+  // with JSON serialization during Object3D clone; cloning after target links
+  // were attached created a circular structure and killed V10 startup at 53%.
+  const operatorModels = operatorPositions.map(() => skeletonClone(operatorTemplate));
   for (let i = 0; i < operatorPositions.length; i++) {
-    const model = i === 0 ? operatorTemplate : skeletonClone(operatorTemplate);
+    const model = operatorModels[i];
     const target = new THREE.Group();
     target.name = `RealOperator_${i + 1}`;
     target.position.copy(operatorPositions[i]);
