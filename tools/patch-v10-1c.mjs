@@ -15,9 +15,9 @@ let changed = false;
 const body = 'src/characters/TrueBodyRig.js';
 changed |= replaceOnce(
   body,
-  `      if (node.isBone) {\n        for (const [key, expression] of Object.entries(BONE_PATTERNS)) {\n          if (!this.bones[key] && expression.test(node.name || '')) {\n            this.bones[key] = node;\n            this.rest.set(node, {\n              quaternion: node.quaternion.clone(),\n              position: node.position.clone(),\n              scale: node.scale.clone()\n            });\n          }\n        }\n      }`,
-  `      for (const [key, expression] of Object.entries(BONE_PATTERNS)) {\n        if (!this.bones[key] && expression.test(node.name || '')) {\n          this.bones[key] = node;\n          this.rest.set(node, {\n            quaternion: node.quaternion.clone(),\n            position: node.position.clone(),\n            scale: node.scale.clone()\n          });\n        }\n      }`,
-  'Mixamo node mapping without isBone dependency'
+  `        if (node.isBone) {`,
+  `        {`,
+  'Mixamo node mapping guard'
 );
 changed |= replaceOnce(
   body,
