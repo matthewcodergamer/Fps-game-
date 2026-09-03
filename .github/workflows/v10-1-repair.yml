@@ -1,0 +1,40 @@
+name: Validate V10.1 World Body Audio Fix
+
+on:
+  push:
+    branches: [v10.1-world-body-audio-fix]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair-and-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply V10.1 source fixes
+        run: node tools/patch-v10-1-world-body-audio.mjs
+      - name: Commit repaired runtime
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add src/main-v10.js src/characters/TrueBodyRig.js src/world/RealisticDistrictV10.js src/audio/AudioManager.js
+            git commit -m "Fix V10.1 world visibility body clipping weapon switching and audio"
+            git push origin HEAD:v10.1-world-body-audio-fix
+          fi
+      - run: npm ci
+      - name: Validate V10.1 production bundle
+        run: npm run check
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run browser regression
+        run: npm run test:browser
