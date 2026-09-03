@@ -21,7 +21,9 @@ jobs:
       - run: npm ci
       - name: Validate V10 runtime and production bundle
         run: npm run check
-      - name: Install Chromium for WebGPU regression
+      - name: Use current Playwright WebGPU browser for regression
+        run: npm install --no-save @playwright/test@1.62.1
+      - name: Install current Chromium for WebGPU regression
         run: npx playwright install --with-deps chromium
       - name: Test V10 WebGPU movement recoil IK and real assets
         run: npm run test:browser
