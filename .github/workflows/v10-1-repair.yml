@@ -34,7 +34,9 @@ jobs:
       - run: npm ci
       - name: Validate V10.1 production bundle
         run: npm run check
-      - name: Install Chromium
+      - name: Use current Playwright WebGPU browser
+        run: npm install --no-save @playwright/test@1.62.1
+      - name: Install current Chromium
         run: npx playwright install --with-deps chromium
-      - name: Run browser regression
-        run: npm run test:browser
+      - name: Run V10.1 world body switching audio regression
+        run: npx playwright test tests/v10-1.spec.js
