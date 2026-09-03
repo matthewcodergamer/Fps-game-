@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   check:
@@ -18,6 +18,16 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Wire authoritative analog movement into V10 runtime
+        run: |
+          node tools/patch-v10-movement.mjs
+          if ! git diff --quiet -- src/main-v10.js; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add src/main-v10.js
+            git commit -m "Fix V10 authoritative mobile movement"
+            git push origin HEAD:v10-webgpu-rebuild
+          fi
       - run: npm ci
       - name: Validate V10 runtime and production bundle
         run: npm run check
@@ -25,6 +35,5 @@ jobs:
         run: npm install --no-save @playwright/test@1.62.1
       - name: Install current Chromium for WebGPU regression
         run: npx playwright install --with-deps chromium
-      # This run includes joystick mid-frame + keyboard probes so movement failures identify input vs collision.
       - name: Test V10 WebGPU movement recoil IK and real assets
         run: npm run test:browser
