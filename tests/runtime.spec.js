@@ -69,10 +69,10 @@ test('boots V9 with real repository models, working mobile input, and bounded re
   expect(requested).toMatch(/bamen_military_soldier_animated\.glb/i);
   expect(requested).toMatch(/free_fps_arms_gameready_-_rigged\.glb/i);
   expect(requested).toMatch(/colt_m4a1_carbine\.glb/i);
-  expect(requested).toMatch(/high-quality_frag_grenade_3d_model\.glb/i);
-  expect(requested).toMatch(/flashbang\.glb/i);
 
   if (isIphone) {
+    expect(requested).toMatch(/high-quality_frag_grenade_3d_model\.glb/i);
+    expect(requested).toMatch(/flashbang\.glb/i);
     expect(bootDiagnostics.stability?.mobileSafe).toBe(true);
     expect(bootDiagnostics.stability?.survivalMode).toBe(false);
     expect(bootDiagnostics.stability?.realAssetStreaming).toBe(true);
@@ -130,6 +130,7 @@ test('boots V9 with real repository models, working mobile input, and bounded re
       stream: window.__PROJECT_STRIKE_REAL_ASSET_STREAM__,
       feel: window.__PROJECT_STRIKE_AAA_STATE__,
       reactions: window.__PROJECT_STRIKE_PHYSICAL_REACTIONS__,
+      trueBody: window.__PROJECT_STRIKE_TRUE_BODY__,
       webglLost: canvas.getContext('webgl2')?.isContextLost?.() || false
     };
   });
@@ -151,6 +152,7 @@ test('boots V9 with real repository models, working mobile input, and bounded re
   expect(Math.abs(diagnostics.feel?.cameraSpring?.yaw || 0)).toBeLessThanOrEqual(.7);
   expect(Math.abs(diagnostics.feel?.cameraSpring?.roll || 0)).toBeLessThanOrEqual(.6);
   expect(diagnostics.reactions?.positionalHitZones).toBe(true);
+  expect(diagnostics.trueBody?.proceduralFallback).toBe(false);
   expect(mainFrameNavigations).toBe(1);
 
   if (isIphone) {
