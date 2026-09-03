@@ -87,11 +87,15 @@ export class StrictFPSViewModel extends FPSViewModel {
       return out.normalize();
     }
 
+    // Compute the barrel axis in the dedicated foreground scene, then rotate it
+    // by the real world-camera orientation. This matches FPSViewModel.socketWorld
+    // and keeps hit rays physically aligned with the rendered barrel.
     muzzle.getWorldPosition(this._barrelOrigin);
     this._barrelTip.set(0, 0, -.14);
     muzzle.localToWorld(this._barrelTip);
     out.subVectors(this._barrelTip, this._barrelOrigin);
     if (out.lengthSq() < 1e-8) this.worldCamera.getWorldDirection(out);
+    else out.applyQuaternion(this.worldCamera.quaternion);
     return out.normalize();
   }
 
