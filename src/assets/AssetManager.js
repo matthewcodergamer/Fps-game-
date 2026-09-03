@@ -92,8 +92,7 @@ export class AssetManager {
     this.decodeTail = Promise.resolve();
     this.activeDecodes = 0;
     this.peakDecodes = 0;
-
-    globalThis.__PROJECT_STRIKE_ASSET_MANAGER__ = {
+    this.diagnostics = {
       strictRealAssets: true,
       modelFallbacks: false,
       serializedDecoding: MEMORY_SAFE,
@@ -101,6 +100,11 @@ export class AssetManager {
       activeDecodes: 0,
       peakDecodes: 0
     };
+
+    // TrueBodyRig and runtime diagnostics both need the actual manager object.
+    // Keep diagnostic counters separate so this global can safely call loadModel.
+    globalThis.__PROJECT_STRIKE_ASSET_MANAGER__ = this;
+    globalThis.__PROJECT_STRIKE_ASSET_DIAGNOSTICS__ = this.diagnostics;
   }
 
   progress(event) {
@@ -121,10 +125,8 @@ export class AssetManager {
     const run = this.decodeTail.then(async () => {
       this.activeDecodes++;
       this.peakDecodes = Math.max(this.peakDecodes, this.activeDecodes);
-      if (globalThis.__PROJECT_STRIKE_ASSET_MANAGER__) {
-        globalThis.__PROJECT_STRIKE_ASSET_MANAGER__.activeDecodes = this.activeDecodes;
-        globalThis.__PROJECT_STRIKE_ASSET_MANAGER__.peakDecodes = this.peakDecodes;
-      }
+      this.diagnostics.activeDecodes = this.activeDecodes;
+      this.diagnostics.peakDecodes = this.peakDecodes;
       try {
         // Yield once before each expensive GLB parse/upload so WebKit can retire
         // the previous frame's temporary GPU resources.
@@ -132,9 +134,7 @@ export class AssetManager {
         return await task();
       } finally {
         this.activeDecodes--;
-        if (globalThis.__PROJECT_STRIKE_ASSET_MANAGER__) {
-          globalThis.__PROJECT_STRIKE_ASSET_MANAGER__.activeDecodes = this.activeDecodes;
-        }
+        this.diagnostics.activeDecodes = this.activeDecodes;
       }
     });
     this.decodeTail = run.catch(() => {});
