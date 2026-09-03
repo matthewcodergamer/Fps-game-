@@ -5,7 +5,7 @@ const opticHolo='./game-assets/models/weapons/attachments/free_pbr_holo_sight_op
 
 export const WEAPON_CATALOG=[
   {id:'m4a1',name:'M4A1',class:'rifle',model:'./game-assets/models/weapons/rifles/colt_m4a1_carbine.glb',bank:'lmg_combat',mag:30,reserve:120,fireRate:700,damage:34,recoil:1,viewLength:.92,optic:opticHolo,pattern:[[1,.08],[1.08,-.12],[1.12,.15],[1.18,-.2],[1.22,.1]]},
-  {id:'m4',name:'M4 CARBINE',class:'rifle',model:'./game-assets/models/weapons/rifles/m4_carbine.glb',bank:'lmg_combat',mag:30,reserve:120,fireRate:720,damage:33,recoil:.96,viewLength:.9,optic:opticRed,pattern:[[.95,.05],[1,-.08],[1.06,.1],[1.1,-.13]]},
+  {id:'m4',name:'M4 CARBINE',class:'rifle',model:'./game-assets/models/weapons/rifles/m4_carbine.glb',bank:'lmg_combat',mag:30,reserve:120,fireRate:720,damage:33,recoil:.96,viewLength:.9,optic:opticRed,mobileHeavy:true,pattern:[[.95,.05],[1,-.08],[1.06,.1],[1.1,-.13]]},
   {id:'ak74',name:'AK-74',class:'rifle',model:'./game-assets/models/weapons/rifles/ak74.glb',bank:'lmg_mg_player',mag:30,reserve:120,fireRate:600,damage:38,recoil:1.34,viewLength:.9,optic:opticRed,pattern:[[1.18,.12],[1.28,-.16],[1.38,.22],[1.48,-.28],[1.56,.16]]},
   {id:'scarl',name:'SCAR-L',class:'rifle',model:'./game-assets/models/weapons/rifles/scarl.glb',bank:'lmg_combat',mag:30,reserve:120,fireRate:625,damage:37,recoil:1.22,viewLength:.92,optic:opticHolo,pattern:[[1.08,.08],[1.18,-.11],[1.26,.16],[1.34,-.2]]},
   {id:'vss',name:'VSS',class:'rifle',model:'./game-assets/models/weapons/rifles/vss.glb',bank:'snp_rifle',mag:20,reserve:100,fireRate:700,damage:42,recoil:.78,viewLength:.88,optic:null,suppressed:true,pattern:[[.7,.03],[.74,-.05],[.79,.06],[.84,-.07]]},
