@@ -206,7 +206,7 @@ async function startRuntime() {
   });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = touchDevice ? 1.02 : 0.92;
+  renderer.toneMappingExposure = iOS ? 1.28 : touchDevice ? 1.16 : 1.0;
   renderer.shadowMap.enabled = !touchDevice;
   updateLoader('Initializing real WebGPU renderer…');
   await renderer.init();
@@ -251,12 +251,13 @@ async function startRuntime() {
   await view.loadArms(DEFAULT_ARMS);
   updateLoader('Rigged first-person arms ready', { advance: true });
 
+  const weaponStates = WEAPON_CATALOG.map(definition => ({
+    ...definition,
+    ammo: definition.mag,
+    currentReserve: definition.reserve
+  }));
   let weaponIndex = 0;
-  let current = {
-    ...WEAPON_CATALOG[weaponIndex],
-    ammo: WEAPON_CATALOG[weaponIndex].mag,
-    currentReserve: WEAPON_CATALOG[weaponIndex].reserve
-  };
+  let current = weaponStates[weaponIndex];
   updateLoader(`Loading real ${current.name} model and optic…`);
   await view.loadWeapon(current);
   updateLoader(`Real ${current.name} ready`, { advance: true });
@@ -328,6 +329,7 @@ async function startRuntime() {
   };
   let started = false;
   let firing = false;
+  let switchingWeapon = false;
   let pointerADS = false;
   let fpsFrames = 0;
   let fpsElapsed = 0;
@@ -336,6 +338,13 @@ async function startRuntime() {
     $('#ammo').textContent = current.ammo;
     document.querySelector('.ammo span').textContent = `/ ${current.currentReserve}`;
     $('#weaponName').textContent = current.name;
+    const nextButton = $('#switchBtn');
+    if (nextButton) {
+      let nextIndex = (weaponIndex + 1) % weaponStates.length;
+      if (iOS && weaponStates[nextIndex]?.mobileHeavy) nextIndex = (nextIndex + 1) % weaponStates.length;
+      nextButton.textContent = weaponStates[nextIndex]?.name || 'SWAP';
+      nextButton.title = 'Switch to next real repository weapon';
+    }
   }
   updateHUD();
 
@@ -376,6 +385,60 @@ async function startRuntime() {
       return;
     }
     player.crouch = !player.crouch;
+  }
+
+  function setFiring(value) {
+    const next = Boolean(value);
+    if (next === firing) return;
+    firing = next;
+    if (!started) return;
+    audio.playWeaponMechanical(current.bank, {
+      gain: next ? 0.055 : 0.085,
+      rate: next ? 1.045 : 0.94
+    });
+  }
+
+  async function switchWeapon(step = 1) {
+    if (switchingWeapon || player.reloading) return false;
+    switchingWeapon = true;
+    setFiring(false);
+    pointerADS = false;
+    $('#statusText').textContent = 'SWITCHING WEAPON';
+    const originalIndex = weaponIndex;
+    const originalCurrent = current;
+    let loaded = false;
+    let lastError = null;
+    for (let attempt = 1; attempt <= weaponStates.length; attempt++) {
+      const candidateIndex = (originalIndex + step * attempt + weaponStates.length * 4) % weaponStates.length;
+      const candidate = weaponStates[candidateIndex];
+      if (iOS && candidate.mobileHeavy) continue;
+      try {
+        await view.loadWeapon(candidate);
+        if (!view.diagnostics.ik?.active) throw new Error('IK did not bind after weapon switch');
+        weaponIndex = candidateIndex;
+        current = candidate;
+        player.recoilIndex = 0;
+        loaded = true;
+        audio.prewarm(current.bank).catch(() => {});
+        updateHUD();
+        $('#statusText').textContent = current.name;
+        setTimeout(() => { if (started && !player.reloading) $('#statusText').textContent = 'READY'; }, 520);
+        break;
+      } catch (error) {
+        lastError = error;
+        console.warn('Real weapon switch candidate failed; trying next repository model.', candidate?.name, error);
+      }
+    }
+    if (!loaded) {
+      weaponIndex = originalIndex;
+      current = originalCurrent;
+      updateHUD();
+      $('#statusText').textContent = 'WEAPON LOAD FAILED';
+      console.error('No next repository weapon could be loaded.', lastError);
+      setTimeout(() => { if (started) $('#statusText').textContent = 'READY'; }, 900);
+    }
+    switchingWeapon = false;
+    return loaded;
   }
 
   function reload() {
@@ -444,6 +507,9 @@ async function startRuntime() {
     applyAimRecoil();
     view.recoil(current.recoil);
     audio.playWeaponShot(current.bank, { gain: current.suppressed ? 0.58 : 0.82 });
+    setTimeout(() => {
+      if (started) audio.playWeaponMechanical(current.bank, { gain: current.class === 'pistol' ? 0.085 : 0.11, rate: 0.96 + Math.random() * 0.05 });
+    }, current.class === 'pistol' ? 22 : 34);
 
     const muzzle = view.muzzleWorld(new THREE.Vector3());
     const baseDirection = shotDirection(0);
@@ -486,6 +552,7 @@ async function startRuntime() {
       if (event.code === 'KeyC' || event.code === 'ControlLeft') slideOrCrouch();
       if (event.code === 'KeyG') throwGrenade('frag');
       if (event.code === 'KeyV') throwGrenade('flash');
+      if (event.code === 'KeyQ') switchWeapon(1).catch(error => console.error('Weapon switch failed.', error));
     });
     addEventListener('keyup', event => { keys[event.code] = false; });
     addEventListener('mousemove', event => {
@@ -494,11 +561,11 @@ async function startRuntime() {
       player.pitch = THREE.MathUtils.clamp(player.pitch - event.movementY * 0.00205, -1.43, 1.43);
     });
     addEventListener('mousedown', event => {
-      if (event.button === 0) firing = true;
+      if (event.button === 0) setFiring(true);
       if (event.button === 2) pointerADS = true;
     });
     addEventListener('mouseup', event => {
-      if (event.button === 0) firing = false;
+      if (event.button === 0) setFiring(false);
       if (event.button === 2) pointerADS = false;
     });
     addEventListener('contextmenu', event => event.preventDefault());
@@ -573,17 +640,14 @@ async function startRuntime() {
       element.addEventListener('pointercancel', () => off?.());
       element.addEventListener('lostpointercapture', () => off?.());
     };
-    hold($('#fireBtn'), () => { firing = true; }, () => { firing = false; });
+    hold($('#fireBtn'), () => setFiring(true), () => setFiring(false));
     hold($('#adsBtn'), () => { pointerADS = true; }, () => { pointerADS = false; });
     $('#reloadBtn').onclick = reload;
     $('#jumpBtn').onclick = jump;
     $('#slideBtn').onclick = slideOrCrouch;
     $('#fragBtn').onclick = () => throwGrenade('frag');
     $('#flashBtn').onclick = () => throwGrenade('flash');
-    $('#switchBtn').onclick = () => {
-      $('#statusText').textContent = 'V10 CORE LOADOUT';
-      setTimeout(() => { if (started) $('#statusText').textContent = 'READY'; }, 650);
-    };
+    $('#switchBtn').onclick = () => { switchWeapon(1).catch(error => console.error('Weapon switch failed.', error)); };
 
     canvas.addEventListener('click', () => {
       if (started && matchMedia('(pointer:fine)').matches && document.pointerLockElement !== canvas) canvas.requestPointerLock?.();
@@ -674,7 +738,7 @@ async function startRuntime() {
     });
     body.setVisible(true);
     body.update(dt, {
-      position: camera.position,
+      position: player.pos,
       eyeHeight: player.eyeHeight,
       yaw: player.yaw,
       pitch: player.pitch,
@@ -723,7 +787,7 @@ async function startRuntime() {
   if (loadAsset) loadAsset.textContent = 'Real models, IK, grenades and WebGPU shaders are resident';
 
   globalThis.__PROJECT_STRIKE_DIAGNOSTICS__ = {
-    runtime: 'v10',
+    runtime: 'v10.1',
     ready: true,
     renderer: 'WebGPU',
     webGPUBackend: true,
@@ -736,6 +800,10 @@ async function startRuntime() {
     simulationDriver: 'fixed-timer-independent-of-render',
     realRepositoryModels: true,
     requiredWorldModels: arena.required,
+    worldVisible: true,
+    worldLighting: arena.lighting,
+    weaponSwitching: 'real-repository-models',
+    audioEnvironment: 'industrial-convolution',
     arms: view.diagnostics.arms,
     weapon: view.diagnostics.weapon,
     ik: view.diagnostics.ik,
@@ -746,7 +814,7 @@ async function startRuntime() {
     renderScale,
     iOS
   };
-  $('#stageBadge').textContent = 'V10';
+  $('#stageBadge').textContent = 'V10.1';
   playButton.disabled = false;
   playButton.textContent = 'DEPLOY';
   setStatus('READY · WEBGPU · REAL ASSETS');
@@ -774,6 +842,7 @@ async function startRuntime() {
 
   playButton.onclick = async () => {
     await audio.unlock();
+    audio.setEnvironment?.('industrial');
     audio.prewarm(current.bank).catch(() => {});
     started = true;
     player.recoilIndex = 0;

@@ -26,9 +26,9 @@ function makeSkyTexture() {
   canvas.height = 512;
   const context = canvas.getContext('2d', { alpha: false });
   const gradient = context.createLinearGradient(0, 0, 0, canvas.height);
-  gradient.addColorStop(0, '#030611');
-  gradient.addColorStop(0.48, '#111b31');
-  gradient.addColorStop(0.74, '#542238');
+  gradient.addColorStop(0, '#07101f');
+  gradient.addColorStop(0.48, '#243652');
+  gradient.addColorStop(0.74, '#744054');
   gradient.addColorStop(1, '#aa5a55');
   context.fillStyle = gradient;
   context.fillRect(0, 0, canvas.width, canvas.height);
@@ -78,8 +78,8 @@ export async function createRealisticDistrictV10(scene, assets, {
   const mixers = [];
   const required = [];
 
-  const asphalt = new THREE.MeshStandardMaterial({ color: 0x2a2b2d, roughness: 0.91, metalness: 0.02 });
-  const concrete = new THREE.MeshStandardMaterial({ color: 0x67696d, roughness: 0.89, metalness: 0.03 });
+  const asphalt = new THREE.MeshStandardMaterial({ color: 0x3b3e43, roughness: 0.91, metalness: 0.02 });
+  const concrete = new THREE.MeshStandardMaterial({ color: 0x858991, roughness: 0.89, metalness: 0.03 });
   const paint = new THREE.MeshStandardMaterial({ color: 0xd9b565, roughness: 0.73, metalness: 0.01 });
 
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(84, 92, 1, 1), asphalt);
@@ -237,13 +237,13 @@ export async function createRealisticDistrictV10(scene, assets, {
     [0xffa44f, -11.5, 22]
   ];
   for (const [color, x, z] of practicals) {
-    const light = new THREE.PointLight(color, mobile ? 4.8 : 8.5, 12, 2);
+    const light = new THREE.PointLight(color, mobile ? 7.2 : 10.5, 15, 2);
     light.position.set(x, 3.4, z);
     light.castShadow = false;
     root.add(light);
   }
 
-  const sun = new THREE.DirectionalLight(0xffbd91, mobile ? 2.1 : 2.6);
+  const sun = new THREE.DirectionalLight(0xffc9a6, mobile ? 3.5 : 3.1);
   sun.position.set(-28, 40, -25);
   sun.castShadow = !mobile;
   if (!mobile) {
@@ -254,7 +254,9 @@ export async function createRealisticDistrictV10(scene, assets, {
     sun.shadow.camera.bottom = -44;
     sun.shadow.camera.far = 100;
   }
-  root.add(sun, new THREE.HemisphereLight(0x7f9ed0, 0x160e1a, mobile ? 0.95 : 0.72));
+  const hemisphere = new THREE.HemisphereLight(0xa7c5ed, 0x241827, mobile ? 1.55 : 1.05);
+  const ambient = new THREE.AmbientLight(0x71809a, mobile ? 0.72 : 0.42);
+  root.add(sun, hemisphere, ambient);
 
   function killTarget(target, direction = new THREE.Vector3()) {
     if (!target?.userData?.alive) return;
@@ -279,6 +281,12 @@ export async function createRealisticDistrictV10(scene, assets, {
     update,
     killTarget,
     updatePlayerShadow() {},
-    operatorUrl: OPERATOR_URL
+    operatorUrl: OPERATOR_URL,
+    lighting: {
+      sun: sun.intensity,
+      hemisphere: hemisphere.intensity,
+      ambient: ambient.intensity,
+      practicalCount: practicals.length
+    }
   };
 }

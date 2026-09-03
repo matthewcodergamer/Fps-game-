@@ -15,6 +15,7 @@ const BONE_PATTERNS = {
   rightLeg: /(?:^|:)RightLeg$/i,
   rightFoot: /(?:^|:)RightFoot$/i,
   head: /(?:^|:)Head$/i,
+  neck: /(?:^|:)Neck$/i,
   leftShoulder: /(?:^|:)LeftShoulder$/i,
   leftArm: /(?:^|:)LeftArm$/i,
   rightShoulder: /(?:^|:)RightShoulder$/i,
@@ -150,7 +151,7 @@ export class TrueBodyRig {
       // The dedicated FPS rig supplies the visible arms/hands. Shrinking these
       // branches prevents seeing inside the local head or a duplicate arm when
       // looking down, while torso/hips/legs remain the real skinned mesh.
-      for (const key of ['head', 'leftShoulder', 'leftArm', 'rightShoulder', 'rightArm']) {
+      for (const key of ['head', 'neck', 'leftShoulder', 'leftArm', 'rightShoulder', 'rightArm']) {
         const bone = this.bones[key];
         if (bone) bone.scale.setScalar(.001);
       }
@@ -267,18 +268,25 @@ export class TrueBodyRig {
 
     const safeDt = THREE.MathUtils.clamp(dt || 0, 0, 1 / 30);
     const feetY = position.y - eyeHeight;
-    this.root.position.set(position.x, feetY, position.z);
+    const slideWeight = THREE.MathUtils.clamp(slide / .68, 0, 1);
+    const forwardX = -Math.sin(yaw);
+    const forwardZ = -Math.cos(yaw);
+    const cameraClearance = .27 + slideWeight * .22 + (crouch ? .055 : 0);
+    this.root.position.set(
+      position.x - forwardX * cameraClearance,
+      feetY,
+      position.z - forwardZ * cameraClearance
+    );
     this.root.rotation.y = yaw;
 
     const moveBlend = THREE.MathUtils.clamp(speed / 5.4, 0, 1);
     const stride = Math.sin(stepPhase) * moveBlend;
     const opposite = Math.sin(stepPhase + Math.PI) * moveBlend;
     const crouchDrop = crouch ? .23 : 0;
-    const slideWeight = THREE.MathUtils.clamp(slide / .68, 0, 1);
     const lookDown = THREE.MathUtils.clamp(-pitch / 1.2, 0, 1);
-    this.root.position.y -= crouchDrop + landImpulse * .03;
-    this.root.position.z += slideWeight * .08;
-    this.root.rotation.x = THREE.MathUtils.damp(this.root.rotation.x, slideWeight * .16, 14, safeDt);
+    this.root.position.y -= crouchDrop + slideWeight * .08 + landImpulse * .03;
+    this.root.rotation.x = THREE.MathUtils.damp(this.root.rotation.x, slideWeight * .11, 14, safeDt);
+    globalThis.__PROJECT_STRIKE_TRUE_BODY_CLEARANCE__ = { cameraClearance, slideWeight, root: this.root.position.toArray() };
 
     const strideScale = sprint ? .62 : crouch ? .26 : .44;
     const leftUpper = this.bones.leftUpLeg;

@@ -1,9 +1,27 @@
+function createIndustrialImpulse(ctx, seconds = 1.35, decay = 3.15) {
+  const length = Math.max(1, Math.floor(ctx.sampleRate * seconds));
+  const impulse = ctx.createBuffer(2, length, ctx.sampleRate);
+  for (let channel = 0; channel < 2; channel++) {
+    const data = impulse.getChannelData(channel);
+    for (let i = 0; i < length; i++) {
+      const t = i / length;
+      const envelope = Math.pow(1 - t, decay);
+      const early = i < ctx.sampleRate * .09 ? 1.35 : 1;
+      data[i] = (Math.random() * 2 - 1) * envelope * early * .34;
+    }
+  }
+  return impulse;
+}
+
 export class AudioManager {
   constructor() {
     this.ctx = null;
     this.master = null;
     this.weaponBus = null;
     this.compressor = null;
+    this.weaponDry = null;
+    this.reverbConvolver = null;
+    this.reverbGain = null;
     this.layers = {
       resident: new Map(),
       weapons_player: new Map(),
@@ -24,17 +42,40 @@ export class AudioManager {
       this.master.gain.value = .82;
       this.weaponBus = this.ctx.createGain();
       this.weaponBus.gain.value = .92;
+      this.weaponDry = this.ctx.createGain();
+      this.weaponDry.gain.value = .94;
+      this.reverbConvolver = this.ctx.createConvolver();
+      this.reverbConvolver.normalize = true;
+      this.reverbConvolver.buffer = createIndustrialImpulse(this.ctx);
+      this.reverbGain = this.ctx.createGain();
+      this.reverbGain.gain.value = .18;
       this.compressor = this.ctx.createDynamicsCompressor();
       this.compressor.threshold.value = -12;
       this.compressor.knee.value = 10;
       this.compressor.ratio.value = 4;
       this.compressor.attack.value = .003;
       this.compressor.release.value = .16;
-      this.weaponBus.connect(this.compressor);
+      this.weaponBus.connect(this.weaponDry);
+      this.weaponDry.connect(this.compressor);
+      this.weaponBus.connect(this.reverbConvolver);
+      this.reverbConvolver.connect(this.reverbGain);
+      this.reverbGain.connect(this.master);
       this.compressor.connect(this.master);
       this.master.connect(this.ctx.destination);
     }
     if (this.ctx.state === 'suspended') await this.ctx.resume();
+  }
+
+  setEnvironment(name = 'industrial') {
+    if (!this.ctx || !this.reverbGain || !this.weaponDry) return;
+    const spaces = { open: [.08, .98], street: [.13, .97], industrial: [.22, .94], interior: [.34, .9] };
+    const [wet, dry] = spaces[name] || spaces.industrial;
+    const now = this.ctx.currentTime;
+    this.reverbGain.gain.cancelScheduledValues(now);
+    this.weaponDry.gain.cancelScheduledValues(now);
+    this.reverbGain.gain.setTargetAtTime(wet, now, .045);
+    this.weaponDry.gain.setTargetAtTime(dry, now, .035);
+    globalThis.__PROJECT_STRIKE_AUDIO_ENVIRONMENT__ = { name, wet, dry, convolution: true };
   }
 
   clear() {
