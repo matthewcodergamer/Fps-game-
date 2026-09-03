@@ -1,84 +1,69 @@
-import * as THREE from 'three';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import * as THREE from 'three/webgpu';
+import { pass } from 'three/tsl';
+import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
 /**
- * Stable WebGL post-processing with a direct-render recovery path.
+ * V10 WebGPU-only cinematic pipeline.
  *
- * The previous WebGPU/MRT graph could fail before the first frame on desktop.
- * This pipeline always has a verified WebGL render path and renders the weapon
- * scene after clearing world depth so the gun and hands remain visible.
+ * Mobile intentionally renders the PBR scene directly to keep the iPhone 11
+ * memory budget predictable. Desktop uses Three.js' native WebGPU/TSL bloom
+ * stack. There is no WebGL EffectComposer and no recovery/fallback renderer.
  */
 export function createCinematicPipeline(renderer, scene, camera, {
   mobile = false,
-  viewModel = null,
-  onFallback = null
+  viewModel = null
 } = {}) {
-  let composer = null;
-  let failed = false;
-  let mode = mobile ? 'direct PBR · mobile' : 'direct PBR';
+  if (!renderer?.isWebGPURenderer || renderer.coordinateSystem !== THREE.WebGPUCoordinateSystem) {
+    throw new Error('Project Strike V10 requires a real WebGPU renderer.');
+  }
+
+  let renderPipeline = null;
+  let bloomPass = null;
+  let mode = 'WebGPU direct PBR · mobile';
 
   if (!mobile) {
-    try {
-      composer = new EffectComposer(renderer);
-      composer.addPass(new RenderPass(scene, camera));
-      const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), .28, .48, .9);
-      bloom.threshold = .9;
-      bloom.strength = .28;
-      bloom.radius = .48;
-      composer.addPass(bloom);
-      composer.addPass(new OutputPass());
-      mode = 'PBR + restrained neon bloom';
-    } catch (error) {
-      composer = null;
-      failed = true;
-      mode = 'direct PBR · recovered';
-      onFallback?.(error);
-    }
+    renderPipeline = new THREE.RenderPipeline(renderer);
+    const scenePass = pass(scene, camera);
+    const sceneColor = scenePass.getTextureNode('output');
+    bloomPass = bloom(sceneColor);
+    bloomPass.threshold.value = .88;
+    bloomPass.strength.value = .24;
+    bloomPass.radius.value = .42;
+    renderPipeline.outputNode = sceneColor.add(bloomPass);
+    mode = 'WebGPU PBR + TSL bloom';
   }
 
   function renderWorld() {
-    if (!composer || failed) {
-      renderer.render(scene, camera);
-      return;
-    }
-    try {
-      composer.render();
-    } catch (error) {
-      failed = true;
-      mode = 'direct PBR · runtime recovery';
-      try { composer.dispose(); } catch {}
-      composer = null;
-      onFallback?.(error);
-      renderer.render(scene, camera);
-    }
+    if (renderPipeline) renderPipeline.render();
+    else renderer.render(scene, camera);
   }
 
   function renderViewModel() {
     if (!viewModel) return;
     const oldAutoClear = renderer.autoClear;
     renderer.autoClear = false;
-    renderer.clearDepth();
+    // Renderer.clear(color, depth, stencil) is part of the common WebGPU
+    // renderer interface. Clear only depth so foreground arms/weapon remain
+    // crisp without erasing the world color buffer.
+    renderer.clear(false, true, false);
     viewModel.render(renderer);
     renderer.autoClear = oldAutoClear;
   }
 
   return {
-    get mode() { return mode; },
-    get failed() { return failed; },
+    mode,
+    backend: 'WebGPU',
+    bloom: Boolean(bloomPass),
     render() {
       renderWorld();
       renderViewModel();
     },
-    resize(width, height, pixelRatio = 1) {
-      if (!composer || failed) return;
-      composer.setPixelRatio(pixelRatio);
-      composer.setSize(width, height);
+    resize() {
+      // WebGPU RenderPipeline tracks renderer output size; renderer.setSize()
+      // is the authoritative resize operation.
     },
     dispose() {
-      try { composer?.dispose(); } catch {}
+      renderPipeline?.dispose?.();
     }
   };
 }
