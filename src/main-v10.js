@@ -355,8 +355,17 @@ async function startRuntime() {
     player.velocity.y = 6.2;
   }
 
+  function movementAxes() {
+    const bridge = globalThis.__PROJECT_STRIKE_MOBILE_INPUT_BRIDGE__;
+    const bridgeReady = Boolean(touchDevice && bridge?.analogAuthoritative);
+    const x = bridgeReady && Number.isFinite(bridge?.x) ? bridge.x : touch.joy.x;
+    const y = bridgeReady && Number.isFinite(bridge?.y) ? bridge.y : touch.joy.y;
+    return { x, y, source: bridgeReady ? 'authoritative-mobile-bridge' : touch.joyPointer != null ? 'direct-pointer' : 'keyboard' };
+  }
+
   function slideOrCrouch() {
-    const moving = player.moveVelocity.length() > 1.1 || Math.hypot(touch.joy.x, touch.joy.y) > 0.62 || keys.KeyW;
+    const movement = movementAxes();
+    const moving = player.moveVelocity.length() > 1.1 || Math.hypot(movement.x, movement.y) > 0.62 || keys.KeyW;
     if (moving && !player.crouch && player.grounded) {
       player.slide = 0.62;
       player.crouch = true;
@@ -585,8 +594,9 @@ async function startRuntime() {
     player.ads = pointerADS;
     const forward = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
     const right = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
-    let x = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + touch.joy.x;
-    let y = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - touch.joy.y;
+    const movement = movementAxes();
+    let x = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + movement.x;
+    let y = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - movement.y;
     const inputLength = Math.hypot(x, y);
     if (inputLength > 1) {
       x /= inputLength;
@@ -680,7 +690,8 @@ async function startRuntime() {
     globalThis.__PROJECT_STRIKE_PLAYER_STATE__ = {
       position: player.pos.toArray(),
       velocity: player.moveVelocity.toArray(),
-      joy: { ...touch.joy },
+      joy: { x: movement.x, y: movement.y },
+      movementSource: movement.source,
       yaw: player.yaw,
       pitch: player.pitch,
       moving: horizontalSpeed > 0.12,
@@ -720,7 +731,7 @@ async function startRuntime() {
     noProceduralAssetFallbacks: true,
     recoilOwner: 'deterministic-player-aim + bounded-viewmodel-kick',
     cumulativeCameraShake: false,
-    mobilePointerMovement: true,
+    mobilePointerMovement: 'authoritative-analog-bridge',
     realRepositoryModels: true,
     requiredWorldModels: arena.required,
     arms: view.diagnostics.arms,
