@@ -130,7 +130,7 @@ export class TrueBodyRig {
       const visual = asset.scene;
       normalizeBody(visual, 1.78);
       visual.traverse(node => {
-        if (node.isBone) {
+        {
           for (const [key, expression] of Object.entries(BONE_PATTERNS)) {
             if (!this.bones[key] && expression.test(node.name || '')) {
               this.bones[key] = node;
@@ -271,7 +271,7 @@ export class TrueBodyRig {
     const slideWeight = THREE.MathUtils.clamp(slide / .68, 0, 1);
     const forwardX = -Math.sin(yaw);
     const forwardZ = -Math.cos(yaw);
-    const cameraClearance = .27 + slideWeight * .22 + (crouch ? .055 : 0);
+    const cameraClearance = .44 + slideWeight * .30 + (crouch ? .10 : 0);
     this.root.position.set(
       position.x - forwardX * cameraClearance,
       feetY,

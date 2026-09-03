@@ -415,6 +415,8 @@ async function startRuntime() {
       try {
         await view.loadWeapon(candidate);
         if (!view.diagnostics.ik?.active) throw new Error('IK did not bind after weapon switch');
+        if (typeof renderer.compileAsync === 'function') await renderer.compileAsync(view.scene, view.camera);
+        else await renderer.compile(view.scene, view.camera);
         weaponIndex = candidateIndex;
         current = candidate;
         player.recoilIndex = 0;
@@ -875,7 +877,7 @@ async function startRuntime() {
       renderer.render(scene, camera);
       renderer.autoClear = false;
       renderer.clearDepth();
-      view.render(renderer);
+      if (!switchingWeapon) view.render(renderer);
       renderer.autoClear = true;
     } catch (error) {
       frameFatal = true;
