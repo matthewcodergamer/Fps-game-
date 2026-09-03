@@ -514,7 +514,7 @@ async function startRuntime() {
     pad.addEventListener('pointerdown', event => {
       if (touch.joyPointer != null) return;
       touch.joyPointer = event.pointerId;
-      pad.setPointerCapture?.(event.pointerId);
+      try { pad.setPointerCapture?.(event.pointerId); } catch {}
       event.preventDefault();
     });
     pad.addEventListener('pointermove', event => {
@@ -539,7 +539,7 @@ async function startRuntime() {
       touch.lookPointer = event.pointerId;
       touch.lookX = event.clientX;
       touch.lookY = event.clientY;
-      lookZone.setPointerCapture?.(event.pointerId);
+      try { lookZone.setPointerCapture?.(event.pointerId); } catch {}
       event.preventDefault();
     });
     lookZone.addEventListener('pointermove', event => {
@@ -563,7 +563,7 @@ async function startRuntime() {
     const hold = (element, on, off) => {
       element.addEventListener('pointerdown', event => {
         event.preventDefault();
-        element.setPointerCapture?.(event.pointerId);
+        try { element.setPointerCapture?.(event.pointerId); } catch {}
         on();
       });
       element.addEventListener('pointerup', event => {
@@ -732,6 +732,7 @@ async function startRuntime() {
     recoilOwner: 'deterministic-player-aim + bounded-viewmodel-kick',
     cumulativeCameraShake: false,
     mobilePointerMovement: 'authoritative-analog-bridge',
+    frameDriver: 'requestAnimationFrame-after-webgpu-init',
     realRepositoryModels: true,
     requiredWorldModels: arena.required,
     arms: view.diagnostics.arms,
@@ -761,7 +762,14 @@ async function startRuntime() {
     if (matchMedia('(pointer:fine)').matches) canvas.requestPointerLock?.();
   };
 
-  renderer.setAnimationLoop(() => {
+  let frameHandle = 0;
+  let frameFatal = false;
+  function frame() {
+    if (frameFatal) return;
+    // renderer.init() completed above, so Three.js supports an ordinary rAF
+    // driver here. Schedule the successor before WebGPU work so gameplay input
+    // cannot silently stop at the loading -> Deploy transition.
+    frameHandle = requestAnimationFrame(frame);
     const dt = Math.min(1 / 30, clock.getDelta());
     if (started) {
       updatePlayer(dt);
@@ -777,12 +785,19 @@ async function startRuntime() {
     grenades.update(dt, arena, player.pos);
     vfx.update(dt);
 
-    renderer.autoClear = true;
-    renderer.render(scene, camera);
-    renderer.autoClear = false;
-    renderer.clearDepth();
-    view.render(renderer);
-    renderer.autoClear = true;
+    try {
+      renderer.autoClear = true;
+      renderer.render(scene, camera);
+      renderer.autoClear = false;
+      renderer.clearDepth();
+      view.render(renderer);
+      renderer.autoClear = true;
+    } catch (error) {
+      frameFatal = true;
+      cancelAnimationFrame(frameHandle);
+      fatal(error);
+      return;
+    }
 
     fpsFrames++;
     fpsElapsed += dt;
@@ -791,7 +806,8 @@ async function startRuntime() {
       fpsFrames = 0;
       fpsElapsed = 0;
     }
-  });
+  }
+  frame();
 }
 
 startRuntime().catch(fatal);
