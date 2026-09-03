@@ -1,9 +1,7 @@
-const CACHE = 'project-strike-v11-shell';
+const CACHE = 'project-strike-v12-webgpu-shell';
 const CACHE_PREFIX = 'project-strike-';
 
-self.addEventListener('install', event => {
-  event.waitUntil(self.skipWaiting());
-});
+self.addEventListener('install', event => event.waitUntil(self.skipWaiting()));
 
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
@@ -23,34 +21,21 @@ async function rememberSmall(request, response) {
   return response;
 }
 
-async function fetchWithSourceFallback(request, { fresh = false } = {}) {
-  const first = fresh
-    ? new Request(request, { cache: 'no-store' })
-    : request;
-  const response = await fetch(first);
+async function fetchFresh(request) {
+  const response = await fetch(new Request(request, { cache: 'no-store' }));
   if (response.ok) return response;
 
+  // Direct-source previews store runtime assets under public/game-assets while
+  // the Vite build copies that folder to game-assets. This is URL normalization,
+  // not a visual/model fallback.
   const url = new URL(request.url);
   if (url.pathname.includes('/game-assets/') && !url.pathname.includes('/public/game-assets/')) {
-    const fallbackUrl = new URL(url.href);
-    fallbackUrl.pathname = url.pathname.replace('/game-assets/', '/public/game-assets/');
-    const fallback = await fetch(new Request(fallbackUrl.href, { cache: 'no-store' }));
-    if (fallback.ok) return fallback;
+    const sourceUrl = new URL(url.href);
+    sourceUrl.pathname = url.pathname.replace('/game-assets/', '/public/game-assets/');
+    const sourceResponse = await fetch(new Request(sourceUrl.href, { cache: 'no-store' }));
+    if (sourceResponse.ok) return sourceResponse;
   }
   return response;
-}
-
-async function freshNavigation(request) {
-  // Never satisfy navigation from an older Project Strike shell. This is the
-  // stale-build recovery path for Safari while V9 real-model streaming evolves.
-  return fetchWithSourceFallback(request, { fresh: true });
-}
-
-async function cacheFirstSmall(request) {
-  const cached = await caches.match(request);
-  if (cached) return cached;
-  const response = await fetchWithSourceFallback(request);
-  return rememberSmall(request, response);
 }
 
 self.addEventListener('fetch', event => {
@@ -60,22 +45,25 @@ self.addEventListener('fetch', event => {
   if (url.origin !== self.location.origin) return;
 
   if (request.mode === 'navigate') {
-    event.respondWith(freshNavigation(request));
+    event.respondWith(fetchFresh(request));
     return;
   }
 
   if (url.pathname.includes('/game-assets/') || url.pathname.includes('/public/game-assets/')) {
-    // V11 rule: real model/audio/texture responses stream from the network and
-    // are never cloned into Cache Storage. AssetManager owns decoded-model
-    // lifetime and iPhone serializes GLB work to one decode at a time.
-    event.respondWith(fetchWithSourceFallback(request, { fresh: true }));
+    // Large GLB/audio/texture responses must never be duplicated into Cache
+    // Storage on iPhone. They stream once; decoded lifetime is owned by runtime.
+    event.respondWith(fetchFresh(request));
     return;
   }
 
   if (url.pathname.includes('/assets/')) {
-    event.respondWith(cacheFirstSmall(request));
+    event.respondWith((async () => {
+      const cached = await caches.match(request);
+      if (cached) return cached;
+      return rememberSmall(request, await fetch(request));
+    })());
     return;
   }
 
-  event.respondWith(fetchWithSourceFallback(request, { fresh: true }));
+  event.respondWith(fetchFresh(request));
 });
