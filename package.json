@@ -1,23 +1,22 @@
 {
-  "name": "project-strike-fps",
+  "name": "project-strike-reboot",
   "private": true,
-  "version": "10.1.0",
+  "version": "11.0.0-reboot.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "audio:manifest": "node tools/audio/build-runtime-manifest.mjs",
-    "verify:runtime": "node tools/verify-runtime.mjs",
-    "test:browser": "playwright test",
-    "check": "node --check src/main-v4.js && node --check src/main-v10.js && node --check src/weapons/FPSViewModelV10.js && node --check src/rendering/GPUWeaponVFX.js && node --check src/world/RealisticDistrictV10.js && node --check src/animation/CharacterIKRig.js && node --check src/characters/TrueBodyRig.js && node --check src/assets/AssetManager.js && node --check service-worker.js && node --check public/service-worker.js && npm run verify:runtime && vite build"
+    "check": "node tools/verify-reboot.mjs && vite build",
+    "test:browser": "playwright test tests/reboot.spec.js"
   },
   "dependencies": {
-    "@dimforge/rapier3d-compat": "^0.20.0",
-    "three": "^0.185.1"
+    "@babylonjs/core": "9.23.0",
+    "@babylonjs/havok": "1.3.14",
+    "@babylonjs/loaders": "9.23.0"
   },
   "devDependencies": {
-    "@playwright/test": "1.55.0",
+    "@playwright/test": "1.62.1",
     "vite": "^7.1.3"
   }
 }

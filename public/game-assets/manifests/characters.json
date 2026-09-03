@@ -1,7 +1,0 @@
-{
-  "version": 2,
-  "characters": [
-    {"id":"operator_male_01","model":"./game-assets/models/characters/operators/bamen_military_soldier_animated.glb","fallbackModel":"./game-assets/models/characters/operators/bamen_military_soldier.glb","animationSet":"operator_standard","license":"CC BY 4.0 — attribution file stored beside the model","status":"ready"},
-    {"id":"fps_arms_male_01","model":"./game-assets/models/characters/first_person_arms/free_fps_arms_gameready_-_rigged.glb","animationSet":"fps_rifle_standard","requirements":["finger_bones","left_hand","right_hand","forearms","clean_skin_weights"],"status":"ready"}
-  ]
-}

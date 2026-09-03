@@ -20,18 +20,16 @@ export default defineConfig({
     trace: 'retain-on-failure',
     launchOptions: { args: webgpuArgs }
   },
-  projects: [
-    {
-      name: 'iphone-11-webgpu',
-      use: {
-        viewport: { width: 844, height: 390 },
-        hasTouch: true,
-        isMobile: true,
-        deviceScaleFactor: 2,
-        userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1'
-      }
+  projects: [{
+    name: 'iphone-11-webgpu-reboot',
+    use: {
+      viewport: { width: 844, height: 390 },
+      hasTouch: true,
+      isMobile: true,
+      deviceScaleFactor: 2,
+      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15 Version/27.0 Mobile/15E148 Safari/604.1'
     }
-  ],
+  }],
   webServer: {
     command: 'npm run dev -- --host 127.0.0.1 --port 4173',
     url: 'http://127.0.0.1:4173',

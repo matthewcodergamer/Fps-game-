@@ -1,127 +1,58 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-  <meta name="theme-color" content="#03050a">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <link rel="manifest" href="manifest.webmanifest">
-  <style>
-    html,body,#app{width:100%;height:100%;margin:0;background:#03050a;color:#f4f7fa;overflow:hidden}
-    body{position:fixed;inset:0}.boot{background:#03050a!important}#game{background:#03050a!important}
-  </style>
-  <link rel="stylesheet" href="styles.css?v=10">
-  <link rel="stylesheet" href="mobile-fixes.css?v=10">
-  <title>Project Strike V10 WebGPU</title>
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.webgpu.js",
-      "three/webgpu": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.webgpu.js",
-      "three/tsl": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.tsl.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/"
-    }
-  }
-  </script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+  <meta name="theme-color" content="#06080d" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Project Strike Reboot</title>
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-<div id="app">
-  <canvas id="game"></canvas>
-
-  <div id="boot" class="panel boot">
-    <div class="brandRow"><div class="strikeMark">PS</div><div><div class="eyebrow">PROJECT STRIKE</div><div class="buildTag">V10 · WEBGPU · REAL ASSETS ONLY · NO VISUAL FALLBACKS</div></div></div>
-    <h1>PROJECT<br>STRIKE</h1>
-    <p class="lead">V10 does not enter gameplay until the required M4A1, optic, rigged FPS arms, animated operators, skinned local body, real frag/flash grenades, district GLBs, CCD hand IK and WebGPU pipelines are loaded and compiled.</p>
-
-    <div class="loadPanel" aria-live="polite">
-      <div class="loadMeta"><span id="loadAsset">Starting V10…</span><strong id="loadPercent">0%</strong></div>
-      <div class="loadTrack"><div id="loadBar"></div></div>
-      <div id="renderStatus" class="renderStatus">Checking WebGPU…</div>
-    </div>
-
-    <div class="boot-actions">
-      <button id="playBtn" class="primary" disabled>LOADING REAL ASSETS</button>
-    </div>
-    <div id="audioStatus" class="muted">Gunshot audio unlocks on Deploy. Model data is loaded serially on iPhone to avoid Safari memory spikes. WebGL is not used as a hidden renderer fallback.</div>
-    <div class="systems"><span>WEBGPU REQUIRED</span><span>REAL M4A1</span><span>REAL OPTIC</span><span>RIGGED FPS ARMS</span><span>CCD HAND IK</span><span>REAL BODY</span><span>REAL FRAG</span><span>REAL FLASH</span><span>REAL OPERATORS</span><span>REAL BUILDINGS</span><span>GPU COMPUTE SMOKE</span><span>GPU SPARKS</span><span>ONE RECOIL OWNER</span><span>POINTER MOVEMENT</span><span>NO VISUAL FALLBACKS</span></div>
-  </div>
-
-  <div id="scopeOverlay" aria-hidden="true"><div class="scopeGlass"><span class="scopeH"></span><span class="scopeV"></span><span class="scopeDot"></span></div></div>
-  <div id="flashOverlay" aria-hidden="true"></div>
-  <div id="runtimeError" aria-live="assertive"></div>
-
-  <div id="hud" class="hidden">
-    <div id="crosshair"><span></span><span></span><span></span><span></span></div>
-    <div class="topbar"><div><span id="fps">60 FPS</span><span id="controllerStatus" class="controlMode">TOUCH/MOUSE</span></div><div id="statusText">READY</div><div id="stageBadge">V10</div></div>
-    <div id="weaponName">M4A1</div><div class="ammo"><strong id="ammo">30</strong><span>/ 120</span></div><div id="hitmarker">×</div>
-    <div id="leftPad" class="touchPad"><div class="stick"></div></div><div id="lookZone"></div>
-    <div class="buttons">
-      <button id="fireBtn" class="round fire">FIRE</button><button id="adsBtn" class="round">ADS</button>
-      <button id="reloadBtn" class="round small">R</button><button id="jumpBtn" class="round small">JUMP</button>
-      <button id="slideBtn" class="round small">SLIDE</button><button id="switchBtn" class="round small switch">M4A1</button>
-      <button id="fragBtn" class="round tiny frag">FRAG</button><button id="flashBtn" class="round tiny flash">FLASH</button>
-    </div>
-  </div>
-</div>
-<script>
-window.__PROJECT_STRIKE_BUILD__ = 'v10-webgpu-real-assets';
-window.__PROJECT_STRIKE_ENTRY_LOADED__ = false;
-window.__PROJECT_STRIKE_BOOT__ = { startedAt: performance.now(), phase: 'html', build: 'v10-webgpu-real-assets' };
-window.__PROJECT_STRIKE_PREBOOT__ = (async () => {
-  const state = { ios: /iPhone|iPad|iPod/i.test(navigator.userAgent || ''), cachesPurged: 0, worker: false };
-  try {
-    if ('caches' in window) {
-      const keys = await caches.keys();
-      const projectKeys = keys.filter(key => key.startsWith('project-strike-'));
-      await Promise.all(projectKeys.map(key => caches.delete(key)));
-      state.cachesPurged = projectKeys.length;
-    }
-    if ('serviceWorker' in navigator) {
-      const registration = await navigator.serviceWorker.register('./service-worker.js?v=12', { updateViaCache: 'none' });
-      await registration.update();
-      state.worker = true;
-    }
-  } catch (error) {
-    console.info('V10 preboot cache refresh recovered.', error);
-  }
-  return state;
-})();
-setTimeout(() => {
-  if (window.__PROJECT_STRIKE_ENTRY_LOADED__) return;
-  const status = document.querySelector('#renderStatus');
-  if (status) status.textContent = 'V10 JavaScript bundle is loading slowly…';
-}, 3500);
-setTimeout(() => {
-  if (window.__PROJECT_STRIKE_ENTRY_LOADED__) return;
-  const status = document.querySelector('#renderStatus');
-  if (status) status.textContent = 'V10 runtime did not load. Reload Safari and verify WebGPU support.';
-}, 15000);
-</script>
-<script type="module" src="src/main-v4.js?v=10"></script>
-<script>
-(() => {
-  const sourceEntry = [...document.querySelectorAll('script[type="module"][src]')]
-    .some(script => /(?:^|\/)src\/main-v4\.js(?:[?#]|$)/.test(script.getAttribute('src') || ''));
-  const localDev = /^(?:localhost|127\.0\.0\.1)$/.test(location.hostname);
-  window.__PROJECT_STRIKE_SOURCE_MODE__ = sourceEntry && !localDev;
-  if (!window.__PROJECT_STRIKE_SOURCE_MODE__ || !window.fetch) return;
-  const nativeFetch = window.fetch.bind(window);
-  window.fetch = (input, init) => {
-    try {
-      const value = input instanceof Request ? input.url : String(input);
-      const url = new URL(value, document.baseURI);
-      if (url.origin === location.origin && url.pathname.includes('/game-assets/') && !url.pathname.includes('/public/game-assets/')) {
-        url.pathname = url.pathname.replace('/game-assets/', '/public/game-assets/');
-        input = input instanceof Request ? new Request(url.href, input) : url.href;
-      }
-    } catch (error) {
-      console.info('Source-mode asset URL mapping skipped.', error);
-    }
-    return nativeFetch(input, init);
-  };
-})();
-</script>
+  <main id="app">
+    <canvas id="game" aria-label="Project Strike game canvas"></canvas>
+    <section id="boot" class="boot-panel">
+      <div class="brand-row"><span class="mark">PS</span><div><strong>PROJECT STRIKE</strong><small>REBOOT · BABYLON.JS · WEBGPU · HAVOK</small></div></div>
+      <h1>ONE STREET.<br/>ONE RIFLE.<br/>ONE ENEMY.</h1>
+      <p id="bootText">Starting the clean runtime…</p>
+      <div class="progress"><i id="progressBar"></i></div>
+      <div class="boot-grid">
+        <span id="gpuStatus">GPU: checking</span><span id="physicsStatus">Physics: waiting</span><span id="qualityStatus">Quality: detecting</span>
+      </div>
+      <button id="deployBtn" disabled>INITIALIZING</button>
+      <p class="fine">WebGPU is required by design. V10.1 remains preserved on the <code>legacy-v10.1</code> branch.</p>
+    </section>
+    <section id="hud" class="hud hidden">
+      <div class="top-left"><strong>PROJECT STRIKE</strong><span id="stateLabel">READY</span></div>
+      <div class="top-right"><span id="fps">0 FPS</span><span id="backend">WEBGPU</span></div>
+      <div id="crosshair" class="crosshair"><i></i><i></i><i></i><i></i></div>
+      <div class="ammo"><strong id="ammo">30</strong><span>/ 120</span><small>M4 PLATFORM</small></div>
+      <div id="hitmarker" class="hitmarker">×</div>
+      <div id="diagnostics" class="diagnostics"></div>
+      <div id="movePad" class="move-pad"><i></i></div>
+      <div id="lookZone" class="look-zone"></div>
+      <div class="mobile-actions">
+        <button id="fireBtn">FIRE</button><button id="adsBtn">ADS</button><button id="jumpBtn">JUMP</button><button id="slideBtn">SLIDE</button><button id="reloadBtn">R</button><button id="grenadeBtn">FRAG</button>
+      </div>
+    </section>
+    <div id="fatal" class="fatal hidden"></div>
+  </main>
+  <script>
+    window.__PROJECT_STRIKE_BUILD__ = 'reboot-babylon-v11';
+    window.__PROJECT_STRIKE_PREBOOT__ = (async () => {
+      try {
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map(registration => registration.unregister()));
+        }
+        if ('caches' in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.filter(key => key.startsWith('project-strike-')).map(key => caches.delete(key)));
+        }
+      } catch (error) { console.info('Legacy cache cleanup skipped', error); }
+    })();
+  </script>
+  <script type="module" src="./src/reboot/main.js"></script>
 </body>
 </html>

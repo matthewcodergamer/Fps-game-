@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "policy": "No production asset enters Project Strike without provenance, license and redistribution fields.",
+  "assets": [],
+  "notes": [
+    "The reboot vertical slice currently uses code-generated geometry only.",
+    "Marketplace source files must not be committed publicly unless their license explicitly permits redistribution.",
+    "Runtime GLB/KTX2 files should be registered here before release."
+  ]
+}

@@ -1,10 +1,8 @@
 {
-  "name":"Project Strike",
-  "short_name":"Strike",
-  "start_url":"./",
-  "display":"fullscreen",
-  "orientation":"landscape",
-  "background_color":"#07090d",
-  "theme_color":"#07090d",
-  "description":"Mobile-first tactical FPS prototype."
+  "name": "Project Strike Reboot",
+  "short_name": "Project Strike",
+  "start_url": "./",
+  "display": "fullscreen",
+  "background_color": "#06080d",
+  "theme_color": "#06080d"
 }
