@@ -148,7 +148,7 @@ requireText(text.ik, 'CCDIKSolver', 'official Three CCD IK solver');
 requireText(text.strictGrenades, 'Required real', 'strict real grenade clone');
 forbidText(text.strictGrenades, 'IcosahedronGeometry', 'grenade primitive fallback');
 requireText(text.arena, 'fallbackTargets: false', 'no primitive target fallback');
-forbidText(text.arena, 'fallbackTarget', 'operator fallback function');
+forbidText(text.arena, 'function fallbackTarget', 'operator fallback function');
 requireText(text.body, 'proceduralFallback: false', 'real local-body contract');
 
 // iPhone decode/memory contract.
