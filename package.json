@@ -1,7 +1,7 @@
 {
   "name": "project-strike-fps",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,7 @@
     "audio:manifest": "node tools/audio/build-runtime-manifest.mjs",
     "verify:runtime": "node tools/verify-runtime.mjs",
     "test:browser": "playwright test",
-    "check": "node --check src/main-v4.js && node --check src/mobile-stability-patch.js && node --check src/ios-survival-runtime-patch.js && node --check src/v4-runtime-patch.js && node --check src/aaa-runtime-patch.js && node --check src/gore-runtime-patch.js && node --check src/animation/CharacterIKRig.js && node --check src/gameplay/AAAFeelSystem.js && node --check src/gameplay/PhysicalReactionSystem.js && node --check src/assets/AssetManager.js && node --check src/weapons/AdvancedFPSViewModel.js && node --check src/characters/TrueBodyRig.js && node --check src/rendering/CyberLighting.js && node --check service-worker.js && node --check public/service-worker.js && npm run verify:runtime && vite build"
+    "check": "node --check src/main-v4.js && node --check src/main-v10.js && node --check src/weapons/FPSViewModelV10.js && node --check src/rendering/GPUWeaponVFX.js && node --check src/world/RealisticDistrictV10.js && node --check src/animation/CharacterIKRig.js && node --check src/characters/TrueBodyRig.js && node --check src/assets/AssetManager.js && node --check service-worker.js && node --check public/service-worker.js && npm run verify:runtime && vite build"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.20.0",
