@@ -3,18 +3,48 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-  <meta name="theme-color" content="#05070a">
+  <meta name="theme-color" content="#020408">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="mobile-fixes.css?v=9">
-  <title>Project Strike V9</title>
+  <title>Project Strike V10 · WebGPU</title>
+  <style>
+    :root{color-scheme:dark;--app-height:100dvh;--cyan:#62e8ff;--hot:#ff266f;--line:rgba(137,190,220,.22);--glass:rgba(4,9,16,.82)}
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html,body,#app{width:100%;height:100%;margin:0;overflow:hidden;background:#020408;color:#f7fbff;font-family:Inter,-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif;touch-action:none;overscroll-behavior:none}
+    body{position:fixed;inset:0;height:var(--app-height);background:#020408}
+    button{font:inherit;color:inherit;border:0;cursor:pointer}
+    .hidden{display:none!important}
+    #game{position:absolute;inset:0;width:100%;height:100%;display:block;background:#020408}
+
+    .boot{position:absolute;z-index:60;inset:0;display:grid;place-items:center;padding:max(20px,env(safe-area-inset-top)) max(22px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(22px,env(safe-area-inset-left));background:radial-gradient(circle at 50% 45%,#0b1927 0,#050a11 31%,#020408 72%)}
+    .bootCard{width:min(680px,94vw);padding:clamp(22px,5vw,44px);border:1px solid var(--line);background:linear-gradient(155deg,rgba(10,21,32,.9),rgba(2,5,9,.96));box-shadow:0 28px 80px rgba(0,0,0,.55);border-radius:26px;backdrop-filter:blur(22px)}
+    .brandRow{display:flex;align-items:center;gap:14px}.strikeMark{width:48px;height:48px;border-radius:15px;display:grid;place-items:center;border:1px solid rgba(98,232,255,.42);color:var(--cyan);font-weight:900;letter-spacing:-2px;background:rgba(98,232,255,.06)}
+    .eyebrow{font-size:11px;letter-spacing:.26em;font-weight:900;color:#dce8ef}.buildTag{margin-top:5px;font-size:10px;letter-spacing:.16em;color:var(--cyan);font-weight:800}
+    h1{margin:28px 0 8px;font-size:clamp(44px,8vw,84px);line-height:.84;letter-spacing:-.065em;font-weight:950}.lead{margin:18px 0 24px;max-width:590px;color:#9aaab5;line-height:1.55;font-size:13px}
+    .loadPanel{padding:17px;border:1px solid rgba(255,255,255,.08);border-radius:18px;background:rgba(0,0,0,.28)}
+    .loadTop{display:flex;gap:12px;align-items:center;justify-content:space-between}.renderStatus{font-size:12px;font-weight:900;letter-spacing:.14em;color:#f6fbff}.loadPercent{font-size:12px;color:var(--cyan);font-weight:900}.loadTrack{height:6px;margin:14px 0 10px;border-radius:999px;background:#0d151d;overflow:hidden}.loadBar{height:100%;width:0;background:linear-gradient(90deg,#28b8ff,#66f3ff,#d2fbff);box-shadow:0 0 26px rgba(75,224,255,.55);transition:width .22s ease}.loadAsset{min-height:16px;font:600 11px ui-monospace,SFMono-Regular,Menlo,monospace;color:#748996;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .bootActions{display:flex;gap:10px;margin-top:16px}.primary,.secondary{min-height:48px;border-radius:15px;padding:0 22px;font-size:11px;font-weight:950;letter-spacing:.16em}.primary{flex:1;color:#02060a;background:#e9fbff;box-shadow:0 10px 35px rgba(102,238,255,.16)}.primary:disabled{opacity:.34;cursor:default}.secondary{background:#07121a;border:1px solid var(--line);color:#b8cbd7}.runtimeError{display:none;margin-top:12px;padding:11px 13px;border-radius:12px;background:rgba(255,45,90,.1);border:1px solid rgba(255,70,105,.32);color:#ffafbf;font:600 11px ui-monospace,SFMono-Regular,Menlo,monospace}.runtimeError.show{display:block}.runtimeError.fatal{background:rgba(180,0,30,.2)}
+    .bootMeta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:15px}.bootMeta span{padding:9px;border-radius:11px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.055);font-size:9px;font-weight:850;letter-spacing:.11em;text-align:center;color:#8297a5}
+
+    .hud{position:absolute;z-index:10;inset:0;pointer-events:none;user-select:none;-webkit-user-select:none}.hudTop{position:absolute;top:max(18px,env(safe-area-inset-top));left:max(22px,env(safe-area-inset-left));right:max(22px,env(safe-area-inset-right));display:grid;grid-template-columns:1fr auto 1fr;align-items:center;font-size:10px;font-weight:900;letter-spacing:.22em;color:#d8e7ef;text-shadow:0 2px 12px #000}.hudTop .center{text-align:center}.hudTop .right{text-align:right;color:var(--cyan);font-size:15px}
+    .lookZone{position:absolute;z-index:2;left:35%;right:0;top:0;bottom:0;pointer-events:auto;touch-action:none}.touchPad{position:absolute;z-index:7;left:max(25px,env(safe-area-inset-left));bottom:max(27px,env(safe-area-inset-bottom));width:clamp(128px,22vw,190px);aspect-ratio:1;border-radius:50%;border:1px solid rgba(195,220,234,.18);background:radial-gradient(circle,rgba(255,255,255,.065),rgba(1,5,8,.12) 63%);pointer-events:auto;touch-action:none;display:grid;place-items:center}.stick{width:42%;aspect-ratio:1;border-radius:50%;border:1px solid rgba(220,237,246,.3);background:rgba(197,211,220,.18);box-shadow:inset 0 0 20px rgba(255,255,255,.06);will-change:transform}
+    .actions{position:absolute;z-index:8;right:max(24px,env(safe-area-inset-right));bottom:max(28px,env(safe-area-inset-bottom));width:min(300px,42vw);height:290px;pointer-events:none}.actionButton{position:absolute;width:62px;height:62px;border-radius:50%;pointer-events:auto;touch-action:none;border:1px solid rgba(91,167,206,.31);background:rgba(2,9,15,.82);color:#eef7fb;font-size:10px;font-weight:950;letter-spacing:.09em;box-shadow:0 8px 25px rgba(0,0,0,.25)}.actionButton:active{transform:scale(.94);background:rgba(18,38,51,.96)}
+    #fireBtn{right:0;bottom:0;width:94px;height:94px;border-color:rgba(255,43,112,.54);background:rgba(91,0,33,.55);font-size:12px}#adsBtn{right:96px;bottom:81px;width:76px;height:76px}#reloadBtn{right:100px;bottom:7px}#switchBtn{right:4px;bottom:139px}#jumpBtn{right:177px;bottom:82px}#slideBtn{right:181px;bottom:7px}#fragBtn{right:112px;bottom:160px;width:54px;height:54px}#flashBtn{right:174px;bottom:160px;width:54px;height:54px}
+    .ammoBlock{position:absolute;z-index:8;right:max(25px,env(safe-area-inset-right));bottom:max(320px,calc(env(safe-area-inset-bottom) + 312px));text-align:right;text-shadow:0 2px 16px #000}.weaponName{font-size:10px;letter-spacing:.22em;color:#8298a5}.ammo{font-size:50px;font-weight:900;letter-spacing:-.05em}.ammo span{font-size:17px;color:#80929d;font-weight:600;letter-spacing:0}.hitmarker{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:28px;font-weight:900;opacity:0;transition:opacity .08s}.hitmarker.show{opacity:1}.crosshair{position:absolute;left:50%;top:50%;width:28px;height:28px;transform:translate(-50%,-50%)}.crosshair:before,.crosshair:after{content:"";position:absolute;background:#f7fbff;box-shadow:0 0 3px #000}.crosshair:before{width:2px;height:22px;left:13px;top:3px}.crosshair:after{height:2px;width:22px;top:13px;left:3px}.crosshair i{position:absolute;inset:8px;background:#020408;border-radius:50%}
+    .scopeOverlay{position:absolute;inset:0;display:none;background:radial-gradient(circle at center,transparent 0 29%,rgba(0,0,0,.96) 31%);z-index:5}.scopeOverlay.active{display:block}.flashOverlay{position:absolute;inset:0;z-index:25;pointer-events:none;background:#fff;opacity:0}.flashOverlay.active{animation:flashbang 2s ease-out}@keyframes flashbang{0%{opacity:1}18%{opacity:.9}100%{opacity:0}}
+
+    .roadmap{position:absolute;z-index:80;inset:0 0 0 auto;width:min(540px,100%);overflow:auto;background:rgba(2,6,10,.97);border-left:1px solid var(--line);padding:24px}.roadmapHead{display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:rgba(2,6,10,.96);padding-bottom:16px}.roadmap h2{margin:4px 0;font-size:27px}.roadmap button{width:42px;height:42px;border-radius:50%;background:#0a141c}.stage{margin:11px 0;padding:14px;border:1px solid rgba(255,255,255,.08);border-radius:14px}.stageTop{display:flex;justify-content:space-between}.stage h3{margin:0;font-size:13px}.stage .status{color:var(--cyan);font-size:9px;letter-spacing:.12em}.stage li{margin:7px 0;color:#8fa2ad;font-size:11px}
+
+    @media(max-height:500px) and (orientation:landscape){.boot{padding:10px 20px}.bootCard{width:min(760px,94vw);padding:18px 24px}.bootCard h1{font-size:44px;margin:14px 0 5px}.lead{display:none}.bootMeta{display:none}.loadPanel{padding:12px}.bootActions{margin-top:10px}.actions{height:250px;width:280px;bottom:12px}.actionButton{transform:scale(.88)}#fireBtn{transform:scale(.9);transform-origin:bottom right}.ammoBlock{bottom:70px;right:126px}.ammo{font-size:42px}.touchPad{width:128px;bottom:20px}.hudTop{top:14px}}
+  </style>
   <script type="importmap">
   {
     "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js",
+      "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.webgpu.js",
+      "three/webgpu": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.webgpu.js",
+      "three/tsl": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.tsl.js",
       "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/"
     }
   }
@@ -24,112 +54,72 @@
 <div id="app">
   <canvas id="game"></canvas>
 
-  <div id="boot" class="panel boot">
-    <div class="brandRow"><div class="strikeMark">PS</div><div><div class="eyebrow">PROJECT STRIKE</div><div class="buildTag">V9 REAL ASSET STREAMING · ONE GLB DECODE · WEBGL2</div></div></div>
-    <h1>PROJECT<br>STRIKE</h1>
-    <p class="lead">Repository-quality M4A1, rigged first-person arms, animated operators, real grenades and industrial models. iPhone decodes one GLB at a time and streams background world assets after critical gameplay models so realism no longer means a Safari memory spike.</p>
-    <div id="renderStatus" class="renderStatus">Refreshing V9 runtime…</div>
-    <div class="boot-actions">
-      <button id="playBtn" class="primary" disabled>LOADING</button>
-      <button id="roadmapBtn" class="secondary">BUILD STATUS</button>
+  <section id="boot" class="boot">
+    <div class="bootCard">
+      <div class="brandRow"><div class="strikeMark">PS</div><div><div class="eyebrow">PROJECT STRIKE</div><div class="buildTag">V10 · WEBGPU · REAL ASSETS ONLY</div></div></div>
+      <h1>PROJECT<br>STRIKE</h1>
+      <p class="lead">The game will not enter combat until the real repository environment, animated operators, rigged body, first-person arms, weapon, grenades, IK chains and WebGPU pipelines are loaded. No procedural weapon, body, grenade or operator substitutes.</p>
+      <div class="loadPanel">
+        <div class="loadTop"><div id="renderStatus" class="renderStatus">PREPARING V10</div><div id="loadPercent" class="loadPercent">0%</div></div>
+        <div class="loadTrack"><div id="loadBar" class="loadBar"></div></div>
+        <div id="loadAsset" class="loadAsset">Clearing stale V8/V9 runtime data…</div>
+      </div>
+      <div class="bootActions"><button id="playBtn" class="primary" disabled>LOADING</button><button id="roadmapBtn" class="secondary">BUILD STATUS</button></div>
+      <div id="runtimeError" class="runtimeError"></div>
+      <div class="bootMeta"><span>WEBGPU ONLY</span><span>REAL M4A1 + ARMS</span><span>GPU COMPUTE VFX</span><span>CCD HAND IK</span><span>REAL GRENADES</span><span>SERIAL iPHONE DECODE</span></div>
     </div>
-    <div id="audioStatus" class="muted">Audio unlocks after Deploy. Large model responses stream directly and are not duplicated into Cache Storage.</div>
-    <div class="systems"><span>REAL M4A1</span><span>RIGGED FPS ARMS</span><span>ANIMATED OPERATORS</span><span>REAL GRENADES</span><span>SERIAL GLB IOS</span><span>V11 STREAM CACHE</span><span>BOUND RECOIL</span><span>FREE AIM</span><span>IK HAND LOCK</span><span>LIMB DAMAGE</span><span>STAGGER + LIMP</span><span>BARREL BALLISTICS</span><span>STREAMED DISTRICT</span><span>GAMEPAD</span></div>
-  </div>
+  </section>
 
   <aside id="roadmap" class="roadmap hidden"><div class="roadmapHead"><div><div class="eyebrow">DEVELOPMENT</div><h2>BUILD ROADMAP</h2></div><button id="closeRoadmap">×</button></div><div id="stageList"></div></aside>
 
-  <div id="scopeOverlay" aria-hidden="true"><div class="scopeGlass"><span class="scopeH"></span><span class="scopeV"></span><span class="scopeDot"></span></div></div>
-  <div id="flashOverlay" aria-hidden="true"></div>
-  <div id="runtimeError" aria-live="polite"></div>
-
-  <div id="hud" class="hidden">
-    <div id="crosshair"><span></span><span></span><span></span><span></span></div>
-    <div class="topbar"><div><span id="fps">60 FPS</span><span id="controllerStatus" class="controlMode">TOUCH/MOUSE</span></div><div id="statusText">READY</div><div id="stageBadge">V9</div></div>
-    <div id="weaponName">M4A1</div><div class="ammo"><strong id="ammo">30</strong><span>/ 120</span></div><div id="hitmarker">×</div>
-    <div id="leftPad" class="touchPad"><div class="stick"></div></div><div id="lookZone"></div>
-    <div class="buttons">
-      <button id="fireBtn" class="round fire">FIRE</button><button id="adsBtn" class="round">ADS</button>
-      <button id="reloadBtn" class="round small">R</button><button id="jumpBtn" class="round small">JUMP</button>
-      <button id="slideBtn" class="round small">SLIDE</button><button id="switchBtn" class="round small switch">SWAP</button>
-      <button id="fragBtn" class="round tiny frag">FRAG</button><button id="flashBtn" class="round tiny flash">FLASH</button>
+  <section id="hud" class="hud hidden">
+    <div class="hudTop"><div><span id="fps">0 FPS</span> &nbsp; <span id="controllerStatus">TOUCH</span></div><div id="statusText" class="center">READY</div><div id="stageBadge" class="right">V10</div></div>
+    <div id="lookZone" class="lookZone"></div>
+    <div id="leftPad" class="touchPad"><div class="stick"></div></div>
+    <div class="crosshair"><i></i></div>
+    <div id="hitmarker" class="hitmarker">×</div>
+    <div class="ammoBlock"><div id="weaponName" class="weaponName">M4A1</div><div id="ammo" class="ammo">30 <span>/ 120</span></div></div>
+    <div class="actions">
+      <button id="flashBtn" class="actionButton">FLASH</button>
+      <button id="fragBtn" class="actionButton">FRAG</button>
+      <button id="jumpBtn" class="actionButton">JUMP</button>
+      <button id="adsBtn" class="actionButton">ADS</button>
+      <button id="slideBtn" class="actionButton">SLIDE</button>
+      <button id="reloadBtn" class="actionButton">R</button>
+      <button id="switchBtn" class="actionButton">SWAP</button>
+      <button id="fireBtn" class="actionButton">FIRE</button>
     </div>
-  </div>
+    <div id="scopeOverlay" class="scopeOverlay"></div>
+    <div id="flashOverlay" class="flashOverlay"></div>
+  </section>
 </div>
-<script>
-window.__PROJECT_STRIKE_BUILD__ = 'v9-real-assets';
-window.__PROJECT_STRIKE_ENTRY_LOADED__ = false;
-window.__PROJECT_STRIKE_PREBOOT__ = (async () => {
-  const state = { ios: /iPhone|iPad|iPod/i.test(navigator.userAgent || ''), cachesPurged: 0, worker: false };
-  try {
-    if (state.ios && 'caches' in window) {
-      const keys = await caches.keys();
-      const projectKeys = keys.filter(key => key.startsWith('project-strike-'));
-      await Promise.all(projectKeys.map(key => caches.delete(key)));
-      state.cachesPurged = projectKeys.length;
-    }
-    if ('serviceWorker' in navigator) {
-      const registration = await navigator.serviceWorker.register('./service-worker.js?v=11', { updateViaCache: 'none' });
-      await registration.update();
-      state.worker = true;
-    }
-  } catch (error) {
-    console.info('V9 preboot cache refresh recovered.', error);
-  }
-  return state;
-})();
-setTimeout(() => {
-  if (window.__PROJECT_STRIKE_ENTRY_LOADED__) return;
-  const status = document.querySelector('#renderStatus');
-  if (status) status.textContent = 'V9 JavaScript bundle is loading slowly…';
-}, 2500);
-setTimeout(() => {
-  if (window.__PROJECT_STRIKE_ENTRY_LOADED__) return;
-  const status = document.querySelector('#renderStatus');
-  const button = document.querySelector('#playBtn');
-  if (status) status.textContent = 'V9 runtime did not load · tap reload';
-  if (button) {
-    button.disabled = false;
-    button.textContent = 'RELOAD V9';
-    button.onclick = () => location.replace(`${location.pathname}?v=9&reload=${Date.now()}`);
-  }
-}, 12000);
-</script>
-<script type="module" src="src/main-v4.js?v=9"></script>
-<script>
-(() => {
-  const sourceEntry = [...document.querySelectorAll('script[type="module"][src]')]
-    .some(script => /(?:^|\/)src\/main-v4\.js(?:[?#]|$)/.test(script.getAttribute('src') || ''));
-  const localDev = /^(?:localhost|127\.0\.0\.1)$/.test(location.hostname);
-  window.__PROJECT_STRIKE_SOURCE_MODE__ = sourceEntry && !localDev;
-  if (!window.__PROJECT_STRIKE_SOURCE_MODE__ || !window.fetch) return;
 
-  const nativeFetch = window.fetch.bind(window);
-  window.fetch = (input, init) => {
+<script>
+  // V12 preboot destroys stale Project Strike caches/workers before V10 imports.
+  window.__PROJECT_STRIKE_SOURCE_MODE__ = false;
+  window.__PROJECT_STRIKE_PREBOOT__ = (async () => {
     try {
-      const value = input instanceof Request ? input.url : String(input);
-      const url = new URL(value, document.baseURI);
-      if (
-        url.origin === location.origin &&
-        url.pathname.includes('/game-assets/') &&
-        !url.pathname.includes('/public/game-assets/')
-      ) {
-        url.pathname = url.pathname.replace('/game-assets/', '/public/game-assets/');
-        input = input instanceof Request ? new Request(url.href, input) : url.href;
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.filter(key => key.startsWith('project-strike-')).map(key => caches.delete(key)));
+      }
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map(async registration => {
+          const script = registration.active?.scriptURL || registration.waiting?.scriptURL || registration.installing?.scriptURL || '';
+          if (script && !script.includes('service-worker.js?v=12')) await registration.unregister();
+        }));
+        const registration = await navigator.serviceWorker.register('./service-worker.js?v=12', {
+          scope: './',
+          updateViaCache: 'none'
+        });
+        registration.update().catch(() => {});
       }
     } catch (error) {
-      console.info('Source-mode asset URL mapping skipped.', error);
+      console.info('V10 preboot cache refresh continued without worker control.', error);
     }
-    return nativeFetch(input, init);
-  };
-})();
+  })();
 </script>
-<script>
-if ('serviceWorker' in navigator) {
-  addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js?v=11', { updateViaCache: 'none' })
-    .then(registration => registration.update())
-    .catch(error => console.info('Service worker unavailable; online runtime is unaffected.', error)));
-}
-</script>
+<script type="module" src="./src/main-v10.js?v=10"></script>
 </body>
 </html>
