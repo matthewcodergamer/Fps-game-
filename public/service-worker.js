@@ -1,4 +1,4 @@
-const CACHE = 'project-strike-v10-shell';
+const CACHE = 'project-strike-v11-shell';
 const CACHE_PREFIX = 'project-strike-';
 
 self.addEventListener('install', event => {
@@ -41,8 +41,8 @@ async function fetchWithSourceFallback(request, { fresh = false } = {}) {
 }
 
 async function freshNavigation(request) {
-  // Never satisfy navigation from the old Project Strike cache. This is the
-  // stale-V6/V7 recovery path for iPhone Safari.
+  // Never satisfy navigation from an older Project Strike shell. This is the
+  // stale-build recovery path for Safari while V9 real-model streaming evolves.
   return fetchWithSourceFallback(request, { fresh: true });
 }
 
@@ -65,8 +65,9 @@ self.addEventListener('fetch', event => {
   }
 
   if (url.pathname.includes('/game-assets/') || url.pathname.includes('/public/game-assets/')) {
-    // V10 rule: model/audio/texture responses are always streamed directly.
-    // They are never cloned into Cache Storage.
+    // V11 rule: real model/audio/texture responses stream from the network and
+    // are never cloned into Cache Storage. AssetManager owns decoded-model
+    // lifetime and iPhone serializes GLB work to one decode at a time.
     event.respondWith(fetchWithSourceFallback(request, { fresh: true }));
     return;
   }
