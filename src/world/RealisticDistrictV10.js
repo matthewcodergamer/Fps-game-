@@ -40,6 +40,12 @@ function makeSkyTexture() {
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
+  // The sky is already large enough to filter cleanly at the V10 mobile render
+  // scale. Avoid generating a transient mip chain on iPhone/WebGPU so startup
+  // never enters the backend's texture-view swizzle mipmap path.
+  texture.generateMipmaps = false;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
   texture.needsUpdate = true;
   return texture;
 }
