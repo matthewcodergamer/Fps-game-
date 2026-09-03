@@ -7,7 +7,7 @@ import { clone as skeletonClone } from 'three/addons/utils/SkeletonUtils.js';
 const MODEL_EXT = /\.([a-z0-9]+)(?:[?#].*)?$/i;
 const IOS_DEVICE = /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
 const COARSE_POINTER = matchMedia('(any-pointer: coarse)').matches;
-const MEMORY_SAFE = Boolean(globalThis.__PROJECT_STRIKE_MOBILE_SAFE__ || (IOS_DEVICE && COARSE_POINTER));
+const MEMORY_SAFE = Boolean(IOS_DEVICE || COARSE_POINTER);
 
 function extensionOf(url) {
   return String(url).match(MODEL_EXT)?.[1]?.toLowerCase() || '';
@@ -43,7 +43,7 @@ function cloneMaterial(material, anisotropy) {
   for (const key of ['normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']) {
     if (next[key]) next[key].anisotropy = anisotropy;
   }
-  if ('envMapIntensity' in next) next.envMapIntensity = Math.max(.7, next.envMapIntensity || 1);
+  if ('envMapIntensity' in next) next.envMapIntensity = Math.max(.72, next.envMapIntensity || 1);
   next.needsUpdate = true;
   return next;
 }
@@ -58,7 +58,7 @@ function prepareSharedMaterial(material, anisotropy) {
   for (const key of ['normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']) {
     if (material[key]) material[key].anisotropy = anisotropy;
   }
-  if ('envMapIntensity' in material) material.envMapIntensity = Math.max(.62, material.envMapIntensity || 1);
+  if ('envMapIntensity' in material) material.envMapIntensity = Math.max(.66, material.envMapIntensity || 1);
   material.needsUpdate = true;
   return material;
 }
@@ -70,29 +70,41 @@ function timeoutError(url, timeoutMs) {
 }
 
 /**
- * Runtime translation layer for repository models.
+ * Strict real-asset translation layer.
  *
- * On memory-constrained iOS devices cloned source GLBs are treated as transient:
- * the clone remains alive in the world/viewmodel, but the decoded source graph is
- * evicted from the loader cache so Safari does not keep both copies reachable.
+ * V10 does not substitute procedural geometry when a GLB fails. On iPhone and
+ * coarse-pointer devices, all model parses are serialized so Safari never has
+ * several GLTFLoader decode graphs + image uploads peaking in memory together.
  */
 export class AssetManager {
-  constructor(renderer, { onProgress = null, timeoutMs = 7000 } = {}) {
+  constructor(renderer, { onProgress = null, timeoutMs = 45000 } = {}) {
     this.renderer = renderer;
     this.onProgress = onProgress;
-    this.timeoutMs = MEMORY_SAFE ? Math.min(timeoutMs, 6000) : timeoutMs;
+    this.timeoutMs = MEMORY_SAFE ? Math.max(timeoutMs, 45000) : Math.max(timeoutMs, 20000);
     this.cache = new Map();
     this.gltf = new GLTFLoader();
     this.gltf.setMeshoptDecoder(MeshoptDecoder);
     this.fbx = new FBXLoader();
-    this.anisotropy = Math.min(MEMORY_SAFE ? 2 : 8, renderer?.capabilities?.getMaxAnisotropy?.() || 1);
+    this.anisotropy = Math.min(
+      MEMORY_SAFE ? 2 : 8,
+      renderer?.getMaxAnisotropy?.() || renderer?.capabilities?.getMaxAnisotropy?.() || 1
+    );
+    this.decodeTail = Promise.resolve();
+    this.activeDecodes = 0;
+    this.peakDecodes = 0;
+
+    globalThis.__PROJECT_STRIKE_ASSET_MANAGER__ = {
+      strictRealAssets: true,
+      modelFallbacks: false,
+      serializedDecoding: MEMORY_SAFE,
+      maxConcurrentModelDecodes: MEMORY_SAFE ? 1 : null,
+      activeDecodes: 0,
+      peakDecodes: 0
+    };
   }
 
   progress(event) {
-    const next = clampProgress(event);
-    const optional = /\/grenades\/|\/attachments\//i.test(String(next.url || ''));
-    if (globalThis.__PROJECT_STRIKE_CORE_READY__ && optional && next.state === 'loading') return;
-    this.onProgress?.(next);
+    this.onProgress?.(clampProgress(event));
   }
 
   withTimeout(promise, url, timeoutMs = this.timeoutMs) {
@@ -104,10 +116,36 @@ export class AssetManager {
     return Promise.race([promise, guard]).finally(() => clearTimeout(timer));
   }
 
+  queueDecode(task) {
+    if (!MEMORY_SAFE) return task();
+    const run = this.decodeTail.then(async () => {
+      this.activeDecodes++;
+      this.peakDecodes = Math.max(this.peakDecodes, this.activeDecodes);
+      if (globalThis.__PROJECT_STRIKE_ASSET_MANAGER__) {
+        globalThis.__PROJECT_STRIKE_ASSET_MANAGER__.activeDecodes = this.activeDecodes;
+        globalThis.__PROJECT_STRIKE_ASSET_MANAGER__.peakDecodes = this.peakDecodes;
+      }
+      try {
+        // Yield once before each expensive GLB parse/upload so WebKit can retire
+        // the previous frame's temporary GPU resources.
+        await new Promise(resolve => requestAnimationFrame(() => resolve()));
+        return await task();
+      } finally {
+        this.activeDecodes--;
+        if (globalThis.__PROJECT_STRIKE_ASSET_MANAGER__) {
+          globalThis.__PROJECT_STRIKE_ASSET_MANAGER__.activeDecodes = this.activeDecodes;
+        }
+      }
+    });
+    this.decodeTail = run.catch(() => {});
+    return run;
+  }
+
   async parseModel(url, { timeoutMs = this.timeoutMs } = {}) {
     const ext = extensionOf(url);
     this.progress({ type: 'model', url, state: 'loading' });
     let asset;
+
     if (ext === 'glb' || ext === 'gltf') {
       const pending = this.gltf.loadAsync(url, event => {
         this.progress({ type: 'model', url, state: 'loading', loaded: event.loaded, total: event.total || 0 });
@@ -136,17 +174,21 @@ export class AssetManager {
     let skinnedMeshes = 0;
     let bones = 0;
     let triangles = 0;
+
     root.traverse(node => {
       if (node.isBone) bones++;
       if (!node.isMesh) return;
       meshes++;
       if (node.isSkinnedMesh) skinnedMeshes++;
       const geometry = node.geometry;
-      triangles += geometry?.index ? geometry.index.count / 3 : (geometry?.attributes?.position?.count || 0) / 3;
+      triangles += geometry?.index
+        ? geometry.index.count / 3
+        : (geometry?.attributes?.position?.count || 0) / 3;
       for (const material of (Array.isArray(node.material) ? node.material : [node.material])) {
         if (material) materials.add(material.uuid);
       }
     });
+
     const bounds = new THREE.Box3().setFromObject(root);
     return {
       meshes,
@@ -183,21 +225,29 @@ export class AssetManager {
 
   async loadModel(url, { clone = false, world = false, timeoutMs = this.timeoutMs } = {}) {
     const resolvedUrl = runtimeUrl(url);
+
     if (!this.cache.has(resolvedUrl)) {
-      const pending = this.parseModel(resolvedUrl, { timeoutMs }).catch(error => {
+      const pending = this.queueDecode(() => this.parseModel(resolvedUrl, { timeoutMs })).catch(error => {
         this.cache.delete(resolvedUrl);
         this.progress({ type: 'model', url: resolvedUrl, state: 'error', error });
         throw error;
       });
       this.cache.set(resolvedUrl, pending);
     }
+
     const source = await this.withTimeout(this.cache.get(resolvedUrl), resolvedUrl, timeoutMs);
     if (!clone) return source;
+
     const scene = this.prepare(skeletonClone(source.scene), { world });
-    const result = { ...source, scene, animations: source.animations.map(clip => clip.clone()) };
+    const result = {
+      ...source,
+      scene,
+      animations: source.animations.map(clip => clip.clone())
+    };
+
     if (MEMORY_SAFE) {
-      // Concurrent callers already hold the same promise; deleting here only
-      // removes the long-lived cache reference after the clone is ready.
+      // Keep only the live clone. The decoded source graph must not remain a
+      // permanent second copy in Safari's JS heap/GPU resource graph.
       this.cache.delete(resolvedUrl);
     }
     return result;
@@ -212,7 +262,7 @@ export class AssetManager {
         errors.push(`${url}: ${error.message}`);
       }
     }
-    throw new Error(`No model candidate loaded. ${errors.join(' | ')}`);
+    throw new Error(`No real model candidate loaded. ${errors.join(' | ')}`);
   }
 
   loadGLB(url, options = {}) {
