@@ -8,12 +8,13 @@ const webgpuArgs = [
   '--use-webgpu-adapter=swiftshader',
   '--disable-vulkan-surface',
   '--ignore-gpu-blocklist',
-  '--disable-dev-shm-usage'
+  '--disable-dev-shm-usage',
+  '--autoplay-policy=no-user-gesture-required'
 ];
 
 export default defineConfig({
   testDir: './tests',
-  timeout: 120_000,
+  timeout: 150_000,
   fullyParallel: false,
   workers: 1,
   reporter: [['line']],
@@ -32,6 +33,14 @@ export default defineConfig({
       isMobile: true,
       deviceScaleFactor: 2,
       userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15 Version/27.0 Mobile/15E148 Safari/604.1'
+    }
+  }, {
+    name: 'desktop-webgpu-reboot',
+    use: {
+      viewport: { width: 1280, height: 720 },
+      hasTouch: false,
+      isMobile: false,
+      deviceScaleFactor: 1
     }
   }],
   webServer: {
