@@ -22,7 +22,7 @@ export default defineConfig({
     headless: false,
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
-    launchOptions: { args: webgpuArgs }
+    launchOptions: { args: webgpuArgs, ...(process.env.PW_CHROMIUM_PATH ? { executablePath: process.env.PW_CHROMIUM_PATH } : {}) }
   },
   projects: [{
     name: 'iphone-11-webgpu-reboot',
