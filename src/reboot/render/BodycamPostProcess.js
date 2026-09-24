@@ -72,13 +72,14 @@ fn main(input: FragmentInputs) -> FragmentOutputs {
   let cB = textureSample(textureSampler, textureSamplerSampler, uvB);
   var col = vec3f(cR.r, cG.g, cB.b);
 
-  // Small-sensor exposure: pump, soft highlight blow-out toward white, then clip.
+  // Small-sensor exposure: gain / pump, then only the top of the range blows out toward white (lights, sky, glare)
+  // before the hard 8-bit clip; mid-tones stay put.
   col = col * uniforms.lensB.y;
   let lum0 = dot(col, vec3f(0.2126, 0.7152, 0.0722));
   let knee = uniforms.look.w;
-  let over = max(lum0 - knee, 0.0) / max(1.0 - knee, 0.05);
-  col = col + vec3f(over * over * 0.55 + over * 0.2);
-  col = mix(col, vec3f(max(max(col.r, col.g), col.b)), clamp(over * 0.6, 0.0, 0.6));
+  let over = clamp(max(lum0 - knee, 0.0) / max(1.0 - knee, 0.05), 0.0, 2.0);
+  col = col + vec3f(over * over * 0.28);
+  col = mix(col, vec3f(max(max(col.r, col.g), col.b)), clamp(over * 0.45, 0.0, 0.5));
 
   // Consumer-sensor grade: desaturate, lift blacks, cool/green-ish shadows, mild S-curve.
   let lum1 = dot(col, vec3f(0.2126, 0.7152, 0.0722));
@@ -122,7 +123,7 @@ function registerShader() {
 
 export const BODYCAM_DEFAULTS = Object.freeze({
   distortion: 0.32, edgeCA: 0.9, vignette: 0.55, noise: 0.06, exposurePump: 0, rollingShutter: 0, time: 0,
-  damage: 0, brightness: 1, saturation: 0.78, blackLift: 0.035, highlightKnee: 0.72,
+  damage: 0, brightness: 1, saturation: 0.78, blackLift: 0.035, highlightKnee: 0.8,
 });
 
 export class BodycamPostProcess {

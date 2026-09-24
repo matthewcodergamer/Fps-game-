@@ -34,6 +34,7 @@ const STRAFE_ROLL = 1.2 * DEG; // Quake/CoD strafe tilt, ≤1.2°
 const LEAN_ROLL = 9 * DEG;
 const LEAN_DROP = 0.05;        // leaning lowers the head a little
 const SLIDE_DROP = 0.1, SLIDE_ROLL = 5 * DEG;
+const MANTLE_PITCH = 6 * DEG, MANTLE_ROLL = 2.5 * DEG; // head dips toward the ledge and rolls as the arms pull up
 
 // ---- Springs (stiffness, damping) -------------------------------------------------------------------------------
 // Recoil kick: ζ≈0.72, returns in ~0.15 s. KICK_IMPULSE converts a kick angle into the spring impulse that peaks at
@@ -84,7 +85,7 @@ export class CameraRig {
     this._lagInit = false;
     this._amp = [0, 0, 0, 0]; // smoothed bob amplitudes
     this._ownStride = 0;
-    this._sprint = 0; this._slide = 0; this._strafeRoll = 0; this._turnRoll = 0;
+    this._sprint = 0; this._slide = 0; this._strafeRoll = 0; this._turnRoll = 0; this._mantleArch = 0;
     this._trauma = 0;        // hit shake (squared for output)
     this._energy = 0;        // generic shake energy (shots, footfalls, landings) → rolling shutter
     this._vFov = camera.fov;
@@ -116,12 +117,15 @@ export class CameraRig {
 
   reset() {
     for (const s of [this._kickPitch, this._kickYaw, this._kickRoll, this._posKick, this._landY, this._landPitch, this._joltY, this._joltPitch, this._joltRoll]) s.reset(0);
-    this._lagInit = false; this._trauma = 0; this._energy = 0;
+    this._lagInit = false; this._trauma = 0; this._energy = 0; this._mantleArch = 0;
   }
 
-  _kickScale(k) {
-    // Kick may be authored in degrees (like the recoil pattern) or radians. Anything ≥0.06 cannot be a sane radian kick
-    // on every axis at once (3.4°), so treat it as degrees.
+  _kickScale(weapon) {
+    // Preferred: weapon.kickUnits = 'deg' | 'rad'. Otherwise infer: kicks are authored in degrees like the recoil
+    // pattern; anything ≥0.06 on some axis cannot be a sane radian view kick (3.4°), so it is treated as degrees.
+    if (weapon.kickUnits === 'deg') return DEG;
+    if (weapon.kickUnits === 'rad') return 1;
+    const k = weapon.kick;
     const m = Math.max(Math.abs(k.pitch || 0), Math.abs(k.yaw || 0), Math.abs(k.roll || 0));
     return m >= 0.06 ? DEG : 1;
   }
@@ -129,7 +133,8 @@ export class CameraRig {
   /**
    * @param {number} dt
    * @param {object} player StrikeCharacterController result
-   * @param {{ads?:number, fovMul?:number, kick?:{pitch:number,yaw:number,roll:number}, fired?:boolean|number}} [weapon]
+   * @param {{ads?:number, fovMul?:number, kick?:{pitch:number,yaw:number,roll:number}, kickUnits?:'deg'|'rad', fired?:boolean|number}} [weapon]
+   *        kick = the weapon def's recoil.kick (degrees, per shot); fired = true or shots fired this frame
    * @param {{hitShake?:number}} [extra]
    */
   update(dt, player, weapon, extra) {
@@ -156,6 +161,9 @@ export class CameraRig {
 
     // ------------------------------------------------------------ state blends
     this._sprint = damp(this._sprint, p.sprinting && p.grounded ? 1 : 0, 6, dt);
+    // Mantle: a single smooth dip over the climb (sin arch) — reads as weight being hauled over the edge.
+    const mArch = p.mantling ? Math.sin(Math.PI * clamp(p.mantleProgress || 0, 0, 1)) : 0;
+    this._mantleArch = damp(this._mantleArch, mArch, 18, dt);
     this._slide = damp(this._slide, p.sliding ? 1 : 0, 10, dt);
     const vx = p.velocity ? p.velocity.x : 0, vz = p.velocity ? p.velocity.z : 0;
     const lateral = clamp((vx * cy - vz * sy) / 4.3, -1, 1); // velocity along camera right
@@ -198,7 +206,7 @@ export class CameraRig {
     if (p.justJumped) this._landPitch.impulse(-0.25);
     const shots = weapon?.fired ? (typeof weapon.fired === 'number' ? Math.min(3, weapon.fired) : 1) : 0;
     if (shots > 0 && weapon.kick) {
-      const k = weapon.kick, unit = this._kickScale(k);
+      const k = weapon.kick, unit = this._kickScale(weapon);
       const mul = KICK_IMPULSE * lerp(1, BODYCAM_RECOIL_MUL, b) * shots;
       const kp = Math.min(MAX_KICK, Math.abs(k.pitch || 0) * unit);
       const ky = Math.min(MAX_KICK, Math.abs(k.yaw || 0) * unit);
@@ -243,10 +251,11 @@ export class CameraRig {
     );
 
     // ------------------------------------------------------------ rotation (+pitch = down, +roll = tilt left)
-    const rx = pitchE + kickP + landP + joltP + bobPitch + shP + swP;
+    const mantleMul = lerp(1, 1.4, b) * comfort;
+    const rx = pitchE + kickP + landP + joltP + bobPitch + shP + swP + MANTLE_PITCH * this._mantleArch * mantleMul;
     const ry = yawE + kickY + shY + swY;
     const rz = bobRoll + this._strafeRoll + this._turnRoll * b - lean * LEAN_ROLL * lerp(1, 0.7, b)
-      + SLIDE_ROLL * this._slide + kickR + joltR + shR + swR;
+      + SLIDE_ROLL * this._slide + kickR + joltR + shR + swR + MANTLE_ROLL * this._mantleArch * mantleMul;
     cam.rotation.set(clamp(rx, -1.55, 1.55), ry, rz);
 
     // ------------------------------------------------------------ FOV (vertical radians, blended in tangent space)

@@ -19,6 +19,8 @@ import '@babylonjs/core/PostProcesses/RenderPipeline/postProcessRenderPipelineMa
 import '@babylonjs/core/Rendering/geometryBufferRendererSceneComponent.js';
 // The G-buffer is a MultiRenderTarget: WebGPUEngine only gets createMultipleRenderTarget from this extension.
 import '@babylonjs/core/Engines/WebGPU/Extensions/engine.multiRender.js';
+// Registered eagerly (the G-buffer renderer would lazy-load it) so the WGSL fix below can be applied before first use.
+import '@babylonjs/core/ShadersWGSL/geometry.fragment.js';
 import { DefaultRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline.js';
 import { SSAO2RenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline.js';
 import { SSRRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssrRenderingPipeline.js';
@@ -144,7 +146,7 @@ class StrikeLensPass {
     const h = pp.height > 0 ? pp.height : this.engine.getRenderHeight();
     // CA is authored in CSS pixels: scale by the live pixel ratio so it looks the same at every resolution.
     const pixelRatio = 1 / Math.max(0.05, this.engine.getHardwareScalingLevel());
-    effect.setFloat4('lensA', Math.max(0, S.ca) * 0.45 * pixelRatio, Math.max(0, S.grain), S.time % 3600, Math.max(0, S.brightness));
+    effect.setFloat4('lensA', Math.max(0, S.ca) * 0.38 * pixelRatio, Math.max(0, S.grain), S.time % 3600, Math.max(0, S.brightness));
     effect.setFloat4('lensB', clamp01(S.damage), clamp01(S.ads), w / Math.max(1, h), clamp01(S.focusVignette));
     effect.setFloat4('texel', 1 / Math.max(1, w), 1 / Math.max(1, h), w, h);
   }
@@ -167,6 +169,22 @@ class StrikeLensPass {
   dispose() {
     this.detach();
     this.postProcess.dispose(this.camera);
+  }
+}
+
+// ------------------------------------------------------------------------------------------------ G-buffer WGSL fix
+// Babylon 9.23's WGSL geometry shader calls toLinearSpaceVec4() on a vec3 in the reflectivity path (SSR + PBR albedo
+// texture in gamma space), which fails WGSL validation and drops every G-buffer draw. Patch the stored source once;
+// the store only registers a shader when its key is empty, so the lazy import inside the renderer keeps this version.
+let gbufferShaderPatched = false;
+function patchGeometryShaderWGSL() {
+  if (gbufferShaderPatched) return;
+  gbufferShaderPatched = true;
+  const key = 'geometryPixelShader';
+  const src = ShaderStore.ShadersStoreWGSL[key];
+  const bad = 'color=toLinearSpaceVec4(color);';
+  if (typeof src === 'string' && src.indexOf(bad) !== -1) {
+    ShaderStore.ShadersStoreWGSL[key] = src.split(bad).join('color=toLinearSpaceVec3(color);');
   }
 }
 
@@ -225,7 +243,7 @@ export class PostFXStack {
     this._bodycamNoise = 0.06;
     this._bodycamGain = 1;
     // Slightly stronger barrel than the class default: reads like the UE5 bodycam reference at the rig's ~100° FOV.
-    this._bodycamParams = { ...BODYCAM_DEFAULTS, distortion: 0.4 };
+    this._bodycamParams = { ...BODYCAM_DEFAULTS, distortion: 0.5 };
 
     // Grade-derived bases (overwritten by applyGrade).
     this._caBase = post.chromaticAberration ? 8 : 0;
@@ -243,6 +261,7 @@ export class PostFXStack {
     this.gbuffer = null;
     this._ownsGBuffer = false;
     if (wantGBuffer) {
+      patchGeometryShaderWGSL();
       const had = !!scene.geometryBufferRenderer;
       // SSR needs full-resolution depth/normals; SSAO (ratio ~.5) and motion blur are fine at half resolution.
       this.gbuffer = scene.enableGeometryBufferRenderer(post.ssr ? 1 : 0.5) || null;
@@ -259,6 +278,11 @@ export class PostFXStack {
     if (post.motionBlur && this.gbuffer) this._createMotionBlur(post.motionBlur);
 
     this.godRays = null; // created lazily by setGodRaysSource(mesh)
+
+    // G-buffer mesh filter (after every consumer: SSR / motion blur toggle G-buffer channels, which recreates its target).
+    this._gbFilter = null;
+    this._gbFilteredTarget = null;
+    if (this.gbuffer) this._createGBufferFilter(!!this.ssr);
 
     // ---- DefaultRenderingPipeline (HDR). Built once, explicitly, after configuration.
     const pipe = new DefaultRenderingPipeline(DRP_NAME, post.hdr !== false, scene, [camera], false);
@@ -336,9 +360,14 @@ export class PostFXStack {
     // The chain is linear HDR at this point (the pipeline tone-maps later).
     ssr.inputTextureColorIsInGammaSpace = false;
     ssr.generateOutputInGammaSpace = false;
+    // ssrDownsample only sizes the horizontal blur; blurDownsample sizes the vertical blur AND the combiner, which
+    // outputs the whole frame - it must stay 0 or the entire image continues at half resolution.
     ssr.ssrDownsample = num(cfg.ratio, 0.5) <= 0.5 ? 1 : 0;
     ssr.blurDispersionStrength = 0.025;
-    ssr.blurDownsample = 1;
+    ssr.blurDownsample = 0;
+    ssr.enableSmoothReflections = true;
+    // Dielectric wet asphalt stores F0 = 0.04 (half float): keep it in, but skip empty / non-PBR pixels (0).
+    ssr.reflectivityThreshold = 0.02;
     ssr.step = Math.max(1, num(cfg.step, 1));
     ssr.maxSteps = clamp(num(cfg.maxSteps, 120) | 0, 16, 400);
     ssr.maxDistance = 60;
@@ -353,6 +382,49 @@ export class PostFXStack {
     ssr.attenuateIntersectionDistance = true;
     ssr.clipToFrustum = true;
     this.ssr = ssr;
+  }
+
+  /**
+   * Keeps two kinds of meshes out of the G-buffer (they stay in the normal render):
+   *  - coplanar decal overlays (negative zOffset) with a normal map: road paint sits 1 cm above the asphalt it decorates and
+   *    its thin-instance bump normals come out corrupted in Babylon's G-buffer shader (SSR sparkle, SSAO noise); the surface
+   *    underneath provides depth / normal / roughness instead;
+   *  - with SSR, PBR materials left in specular-glossiness defaults (no metallic / roughness: the emissive neon, sign and
+   *    palette materials): the G-buffer writes their default white reflectivity, which would turn every sign into a mirror.
+   * Filters the camera's already-culled active mesh list into a reused array: no per-frame allocation.
+   */
+  _createGBufferFilter(withSSR) {
+    const out = [];
+    const verdicts = new WeakMap();
+    const excluded = mat => {
+      if (!mat || mat.getClassName() !== 'PBRMaterial') return false;
+      if (mat.zOffset < 0 && mat.bumpTexture) return true;
+      return withSSR && mat.metallic == null && mat.roughness == null && !mat.metallicTexture && !mat.reflectivityTexture;
+    };
+    this._gbFilter = (_layer, list, length) => {
+      if (!list) return null;
+      out.length = 0;
+      for (let i = 0; i < length; i++) {
+        const mesh = list[i];
+        const mat = mesh.material;
+        if (mat) {
+          let skip = verdicts.get(mat);
+          if (skip === undefined) { skip = excluded(mat); verdicts.set(mat, skip); }
+          if (skip) continue;
+        }
+        out.push(mesh);
+      }
+      return out;
+    };
+    this._syncGBufferFilter();
+  }
+
+  /** (Re)attaches the filter when the renderer has (re)created its multi render target. One reference compare per frame. */
+  _syncGBufferFilter() {
+    const mrt = this._gbFilter ? this.gbuffer?.getGBuffer?.() : null;
+    if (!mrt || mrt === this._gbFilteredTarget) return;
+    mrt.getCustomRenderList = this._gbFilter;
+    this._gbFilteredTarget = mrt;
   }
 
   _createMotionBlur(cfg) {
@@ -594,7 +666,7 @@ export class PostFXStack {
     // Small sensors get noisier as the scene gets darker (grain intensity is the grade's proxy for that); at night the
     // camera also runs high gain, which brightens the picture and amplifies the noise.
     const night = grade.preset === 'NIGHT_CITY' || num(grade.exposure, 1) >= 1.38;
-    this._bodycamGain = night ? 1.3 : 1;
+    this._bodycamGain = night ? 1.05 : 1;
     this._bodycamNoise = clamp((0.035 + num(grade.grainIntensity, 6) * 0.0035) * (night ? 1.2 : 1), 0.03, 0.12);
     this._syncFinishing();
 
@@ -662,6 +734,7 @@ export class PostFXStack {
    * @param {{speed?:number, ads?:number, damage?:number, shake?:number, time?:number}} [state]
    */
   update(dt, state) {
+    if (this._gbFilter) this._syncGBufferFilter();
     const d = dt > 0 ? (dt < 0.1 ? dt : 0.1) : 0;
     const s = state || EMPTY_STATE;
     this._time = Number.isFinite(s.time) ? s.time : this._time + d;

@@ -4,7 +4,7 @@ import { PhysicsShapeCapsule, PhysicsShapeSphere } from '@babylonjs/core/Physics
 import { ProximityCastResult } from '@babylonjs/core/Physics/proximityCastResult.js';
 import { ShapeCastResult } from '@babylonjs/core/Physics/shapeCastResult.js';
 import { WorldRaycaster, createHitRecord } from '../physics/Raycast.js';
-import { clamp, lerp, damp, easeInOutSine } from '../core/MathUtil.js';
+import { clamp, lerp, damp, easeInOutSine, easeOutCubic } from '../core/MathUtil.js';
 
 // ---- "Call of Duty weight" tuning ---------------------------------------------------------------------------------
 // Body
@@ -44,6 +44,16 @@ const HEAD_PROBE_R = 0.34;     // headroom sphere radius (slightly under RADIUS 
 // Babylon's built-in step-up only works when a frame's travel exceeds keepDistance (≈3 m/s at 60 fps), so slow
 // crouch/slow-walk moves get a small assist, and small drops are snapped instead of free-falling (smooth curbs).
 const MAX_STEP = 0.35, STEP_ASSIST = 0.34, SNAP_DOWN = 0.4, GROUND_GAP = 0.02;
+// Mantle / vault (CoD MW): jump facing a ledge 0.5–1.5 m above the ground (or keep pushing into one while airborne)
+// and the body climbs it kinematically: rise first, then over, so the path can be validated with two capsule sweeps.
+// Thin obstacles (jersey barriers, planters, low walls ≤ VAULT_MAX_DEPTH deep) are vaulted straight over instead.
+// Railings / perimeter walls are never mantled (level design keeps them as hard edges).
+const MANTLE_MIN = 0.5, MANTLE_MAX = 1.5;   // ledge height above the ground we left
+const MANTLE_REACH = 0.45;                   // how far in front of the body a ledge can be grabbed
+const MANTLE_GAP = 0.04;                     // clearance above the ledge while moving over it
+const MANTLE_BASE_TIME = 0.24, MANTLE_TIME_PER_M = 0.2, VAULT_EXTRA_TIME = 0.06; // ≈0.4 s waist-high, ≈0.55 s chest-high
+const VAULT_MAX_DEPTH = 0.9, MANTLE_COOLDOWN = 0.25, MANTLE_PROBE_INTERVAL = 0.05;
+const VAULT_LANDING_SOFTEN = 0.35;           // vault drop-offs are planned: land softer than a real fall
 
 const DOWN = new Vector3(0, -1, 0);
 
@@ -102,7 +112,10 @@ export class StrikeCharacterController {
     this._gravity = new Vector3(0, -GRAVITY, 0);
     this._vel = new Vector3();
     this._tmp = new Vector3();
+    this._tmp2 = new Vector3();
     this._slideDir = new Vector3(0, 0, 1);
+    // Pre-allocated mantle state (start centre, rise, horizontal travel, exit direction/speed).
+    this._mantle = { active: false, t: 0, dur: 0, sx: 0, sy: 0, sz: 0, rise: 0, dx: 0, dz: 0, fx: 0, fz: 1, exitSpeed: 0, vault: false, height: 0 };
 
     this.yaw = Number.isFinite(spawn.yaw) ? spawn.yaw : Math.PI;
     this.pitch = 0;
@@ -123,6 +136,7 @@ export class StrikeCharacterController {
       // extras (not in the base contract, safe to ignore)
       aimForward: this._aim, crouchAmount: 0, moving: false, stride: 0, footstep: false, footstepIntensity: 0,
       groundSurface: 'concrete', fallSpeed: 0, slideProgress: 0, headroomBlocked: false, verticalSpeed: 0,
+      mantling: false, vaulting: false, mantleProgress: 0, mantleHeight: 0,
     };
     this._updateBasis();
     this._computeEye(0);
@@ -144,6 +158,8 @@ export class StrikeCharacterController {
     this._lean = 0; this._stride = 0; this._stepOffset = 0; this._prevFeetY = null; this._standCheck = 0; this._standBlocked = false;
     this._blocked = false;
     this._surface = 'concrete';
+    this._lastGroundY = this.controller ? this._feetY() : 0;
+    this._mantle.active = false; this._mantleCooldown = 0; this._mantleProbe = 0; this._softLand = false;
   }
 
   /** Respawn / teleport: feet position + yaw. Resets velocity, stance and timers. */
@@ -223,6 +239,7 @@ export class StrikeCharacterController {
     this.pitch = clamp(this.pitch + (input.lookY || 0) * lookScale, -PITCH_LIMIT, PITCH_LIMIT);
     this._updateBasis();
     const fwd = this._forward, right = this._right;
+    if (this._mantle.active) return this._updateMantle(dt, input, prevYaw, prevPitch);
 
     // ---------------------------------------------------------------- support / timers
     c.checkSupportToRef(dt, DOWN, this._support);
@@ -234,6 +251,7 @@ export class StrikeCharacterController {
     if (!grounded && wasGrounded && !this._jumped && this._jumpLock <= 0 && this._groundClamp(SNAP_DOWN) > 0) grounded = true;
     let justLanded = false, justJumped = false, landingImpact = 0, footstep = false;
     this._slideCooldown = Math.max(0, this._slideCooldown - dt);
+    this._mantleCooldown = Math.max(0, this._mantleCooldown - dt);
     this._jumpBuffer = Math.max(0, this._jumpBuffer - dt);
     this._landSlow = damp(this._landSlow, 0, 3.5, dt);
     this._sinceLand += dt;
@@ -247,15 +265,17 @@ export class StrikeCharacterController {
         if (this._jumped || this._airTime > 0.15 || fallSpeed > 2.5) {
           justLanded = true;
           landingImpact = clamp((fallSpeed - 2) / 9, 0, 1);
+          if (this._softLand) landingImpact *= VAULT_LANDING_SOFTEN;
           const keep = 1 - LANDING_SPEED_LOSS * landingImpact;
           this._hx *= keep; this._hz *= keep;
           this._landSlow = Math.max(this._landSlow, landingImpact * 0.45);
           this._sinceLand = 0;
           this._probeSurface();
         }
-        this._jumped = false;
+        this._jumped = false; this._softLand = false;
       }
       this._coyote = COYOTE_TIME;
+      this._lastGroundY = this._feetY();
     } else {
       this._coyote = Math.max(0, this._coyote - dt);
     }
@@ -300,6 +320,9 @@ export class StrikeCharacterController {
         this._jumpBuffer = 0;
       } else if (this._stance === 'CROUCH') {
         this._crouchToggled = false; this._holdSuppressed = !!input.crouch; this._jumpBuffer = 0;
+      } else if (my > -0.2 && this._tryMantle(grounded)) {
+        // CoD: jump facing a waist/chest-high ledge climbs (or vaults) it instead of hopping into it.
+        return this._updateMantle(dt, input, prevYaw, prevPitch);
       } else doJump = true;
     }
 
@@ -311,6 +334,14 @@ export class StrikeCharacterController {
       if (this._standCheck <= 0) {
         if (this._canStand()) { this._setStance('STAND'); this._standBlocked = false; }
         else { this._standBlocked = true; this._standCheck = 0.1; } // re-test at 10 Hz while under cover
+      }
+    }
+    // Airborne and still pushing into a ledge (jumped short of it / ran off a step into a wall): grab it.
+    if (!grounded && !doJump && !this._sliding && my > 0.5 && this._stance === 'STAND' && this._mantleCooldown <= 0) {
+      this._mantleProbe -= dt;
+      if (this._mantleProbe <= 0) {
+        this._mantleProbe = MANTLE_PROBE_INTERVAL; // ≤ 20 probes/s while airborne: two rays, rarely two sweeps
+        if (this._tryMantle(false)) return this._updateMantle(dt, input, prevYaw, prevPitch);
       }
     }
     const crouched = this._stance === 'CROUCH';
@@ -459,9 +490,15 @@ export class StrikeCharacterController {
     else state = 'IDLE';
 
     // ---------------------------------------------------------------- result
-    r.grounded = this._grounded;
-    this._outPos.copyFrom(c.getPosition());
     this._outVel.copyFrom(v);
+    return this._writeResult(state, speed, moving, footstep, justJumped, justLanded, landingImpact, prevYaw, prevPitch, mx, my, crouched);
+  }
+
+  /** Fills the reused result object (shared by the normal and the mantle paths). */
+  _writeResult(state, speed, moving, footstep, justJumped, justLanded, landingImpact, prevYaw, prevPitch, mx, my, crouched) {
+    const r = this.result, m = this._mantle;
+    r.grounded = this._grounded;
+    this._outPos.copyFrom(this.controller.getPosition());
     r.speed = speed;
     r.state = state;
     r.stance = this._stance;
@@ -488,6 +525,118 @@ export class StrikeCharacterController {
     r.slideProgress = this._sliding ? Math.min(1, this._slideT / SLIDE_TIME) : 0;
     r.headroomBlocked = this._standBlocked;
     r.verticalSpeed = this._grounded ? 0 : this._vy;
+    r.mantling = m.active;
+    r.vaulting = m.active && m.vault;
+    r.mantleProgress = m.active ? Math.min(1, m.t / m.dur) : 0;
+    r.mantleHeight = m.active ? m.height : 0;
+    return r;
+  }
+
+  /**
+   * Looks for a grabbable ledge straight ahead and, if the kinematic climb path is free, starts a mantle (or a vault
+   * over a thin obstacle). Costs 2–4 rays + 2 capsule sweeps, only on a jump press / throttled while airborne.
+   * @param {boolean} fromGround jump pressed on the ground (vs. grabbing while airborne)
+   */
+  _tryMantle(fromGround) {
+    if (this._stance !== 'STAND' || this._sliding || this._mantleCooldown > 0) return false;
+    const plugin = this.scene.getPhysicsEngine?.()?.getPhysicsPlugin?.();
+    const q = this._castQuery;
+    if (!plugin || typeof plugin.shapeCast !== 'function' || !q.ignoreBody) return false;
+    const c = this.controller, p = c.getPosition(), fo = c.footOffset, feetY = p.y - fo;
+    const groundY = fromGround ? feetY : Math.min(this._lastGroundY, feetY);
+    const f = this._forward, hit = this._hit, rq = this.rayQuery, rc = this.raycaster, tmp = this._tmp;
+
+    // 1) a solid wall facing us, just in front (knee height from the ground; near the feet while airborne)
+    const probeY = feetY + (fromGround ? 0.35 : 0.08);
+    tmp.set(p.x, probeY, p.z);
+    if (!rc.cast(tmp, f, RADIUS + MANTLE_REACH, hit, rq).hit) return false;
+    if (hit.normal.y > 0.5 || hit.normal.x * f.x + hit.normal.z * f.z > -0.5) return false; // ramp, or too oblique
+    const meta = hit.node?.metadata;
+    if (!meta || !meta.surface || meta.railing || meta.perimeter) return false;             // world geometry only
+    const face = hit.distance;                                                               // body axis → wall face
+    const ex = p.x + f.x * face, ez = p.z + f.z * face;
+
+    // 2) the ledge top, just inside the face (a ray starting inside a taller wall finds nothing → no mantle)
+    const top0 = groundY + MANTLE_MAX + 0.05;
+    tmp.set(ex + f.x * 0.1, top0, ez + f.z * 0.1);
+    if (!rc.cast(tmp, DOWN, top0 - probeY + 0.02, hit, rq).hit || hit.normal.y < 0.7) return false;
+    const topY = hit.point.y;
+    const height = topY - groundY;
+    if (height > MANTLE_MAX || height < (fromGround ? MANTLE_MIN : 0.3) || topY < feetY + 0.02) return false;
+
+    // 3) thin obstacle → vault over it; deep enough → climb onto it
+    const back = VAULT_MAX_DEPTH + 0.05;
+    tmp.set(ex + f.x * back, topY - 0.08, ez + f.z * back);
+    this._tmp2.set(-f.x, 0, -f.z);
+    let travel, vault = false;
+    if (rc.cast(tmp, this._tmp2, back - 0.02, hit, rq).hit && hit.distance > 0.01) {
+      const depth = back - hit.distance;
+      vault = depth < VAULT_MAX_DEPTH;
+      travel = face + depth + RADIUS + 0.08;              // clear the far face
+    }
+    if (!vault) {
+      travel = face + RADIUS + 0.06;                      // centre just past the edge: standing on the top
+      tmp.set(p.x + f.x * travel, topY + 0.25, p.z + f.z * travel);
+      if (!rc.cast(tmp, DOWN, 0.35, hit, rq).hit || Math.abs(hit.point.y - topY) > 0.08 || hit.normal.y < 0.7) return false;
+    }
+
+    // 4) the climb path must be free for the capsule: straight up, then across
+    const rise = topY + MANTLE_GAP + fo - p.y;
+    q.shape = c.shape;
+    q.startPosition.copyFrom(p);
+    q.endPosition.set(p.x, p.y + rise, p.z);
+    plugin.shapeCast(q, this._castIn, this._castHit);
+    if (this._castHit.hasHit) return false;
+    q.startPosition.copyFrom(q.endPosition);
+    q.endPosition.set(p.x + f.x * travel, p.y + rise, p.z + f.z * travel);
+    plugin.shapeCast(q, this._castIn, this._castHit);
+    if (this._castHit.hasHit) return false;
+
+    const m = this._mantle;
+    const entry = Math.hypot(this._hx, this._hz);
+    m.active = true; m.t = 0; m.vault = vault; m.height = height;
+    m.sx = p.x; m.sy = p.y; m.sz = p.z; m.rise = rise; m.dx = f.x * travel; m.dz = f.z * travel; m.fx = f.x; m.fz = f.z;
+    m.dur = MANTLE_BASE_TIME + MANTLE_TIME_PER_M * rise + (vault ? VAULT_EXTRA_TIME : 0);
+    // Vaults carry you on (you drop off the far side); climbing onto something ends nearly planted.
+    m.exitSpeed = vault ? clamp(entry, 2.8, SPEED_WALK) : clamp(entry * 0.5, 0.8, 2.2);
+    this._sprinting = false; this._jumped = false; this._jumpBuffer = 0; this._coyote = 0; this._jumpLock = 0;
+    this._grounded = false; this._blocked = false;
+    this._hx = this._hz = this._vy = 0;
+    return true;
+  }
+
+  /** Kinematic climb: rise (ease-out), then over the edge (ease-in-out). Collisions were validated at the start. */
+  _updateMantle(dt, input, prevYaw, prevPitch) {
+    const m = this._mantle, c = this.controller;
+    m.t += dt;
+    const k = Math.min(1, m.t / m.dur);
+    const ky = easeOutCubic(k / 0.55);
+    const kx = easeInOutSine((k - 0.5) / 0.5);
+    const p = c.getPosition();
+    const nx = m.sx + m.dx * kx, ny = m.sy + m.rise * ky, nz = m.sz + m.dz * kx;
+    this._outVel.set((nx - p.x) / dt, (ny - p.y) / dt, (nz - p.z) / dt); // presentation velocity (camera roll, sway)
+    this._tmp.set(nx, ny, nz);
+    c.setPosition(this._tmp);
+    this._vel.setAll(0);
+    c.setVelocity(this._vel);
+    this._grounded = false;
+    this._airTime += dt;
+    this._lean = damp(this._lean, 0, LEAN_RATE, dt);
+    this._crouchAmount = Math.max(0, this._crouchAmount - dt / CROUCH_TIME);
+    this._stepOffset = damp(this._stepOffset, 0, STEP_SMOOTH_RATE, dt);
+    this._prevFeetY = null;
+    if (k >= 1) {
+      m.active = false;
+      this._mantleCooldown = MANTLE_COOLDOWN;
+      this._hx = m.fx * m.exitSpeed; this._hz = m.fz * m.exitSpeed; this._vy = 0;
+      this._lastAirVy = -1;          // arriving on top is not a fall
+      this._softLand = m.vault;      // the drop behind a vault lands soft
+      this._jumped = false;
+    }
+    this._computeEye(this._stepOffset);
+    const speed = Math.hypot(this._outVel.x, this._outVel.z);
+    const r = this._writeResult('JUMP', speed, speed > 0.3, false, false, false, 0, prevYaw, prevPitch, input.moveX || 0, input.moveY || 0, false);
+    if (!m.active) { r.mantling = true; r.vaulting = m.vault; r.mantleProgress = 1; r.mantleHeight = m.height; } // last frame still reports the mantle
     return r;
   }
 

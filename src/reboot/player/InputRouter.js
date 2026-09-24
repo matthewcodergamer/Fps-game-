@@ -25,6 +25,12 @@ const isFormField = t => !!t && (t.tagName === 'INPUT' || t.tagName === 'SELECT'
 const isUiTarget = t => !!(t && t.closest && t.closest(UI_SELECTOR));
 const capture = (el, id) => { try { el.setPointerCapture?.(id); } catch { /* synthetic / already released pointer */ } };
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+// iOS Safari ignores preventDefault on pointerdown for scrolling / double-tap zoom / long-press callouts: the element
+// itself must opt out. Set inline so the controls work even if the stylesheet forgets it.
+const hardenTouch = el => {
+  const st = el.style; if (!st) return;
+  st.touchAction = 'none'; st.userSelect = 'none'; st.webkitUserSelect = 'none'; st.webkitTouchCallout = 'none';
+};
 
 export class InputRouter {
   /**
@@ -56,6 +62,7 @@ export class InputRouter {
     this._lastPauseAt = -1e9;
     this._expectUnlock = false;
     this._touchToggles = { ads: false, crouch: false };
+    this._bound = new WeakSet();         // DOM controls already wired (bindControls() is idempotent)
     this._fine = typeof matchMedia === 'function' ? matchMedia('(pointer:fine)').matches : true;
     this._state = {
       moveX: 0, moveY: 0, lookX: 0, lookY: 0, fire: false, firePressed: false, ads: false, sprint: false, walk: false,
@@ -66,7 +73,8 @@ export class InputRouter {
     this._onBeforeUnload = e => { e.preventDefault(); e.returnValue = ''; return ''; };
     this._bindKeyboard();
     this._bindPointer();
-    this._bindTouch();
+    this._bindTouchGlobal();
+    this.bindControls();
     this._bindLifecycle();
   }
 
@@ -200,16 +208,33 @@ export class InputRouter {
     this._pad?.classList?.toggle('sprinting', on); // UI hook (style optional)
   }
 
-  _bindTouch() {
+  _bindTouchGlobal() {
     // Any touch anywhere marks this as a touch session and suppresses the compat mouse events that follow it.
     addEventListener('pointerdown', e => { if (e.pointerType === 'touch') { this._lastTouchAt = now(); this.touchActive = true; } }, { capture: true, passive: true });
     addEventListener('pointerup', e => { if (e.pointerType === 'touch') this._lastTouchAt = now(); }, { capture: true, passive: true });
+    // iOS Safari pinch-zoom (ignores user-scalable=no) would rescale the canvas mid-fight.
+    if (typeof document !== 'undefined') document.addEventListener('gesturestart', e => e.preventDefault(), { passive: false });
+  }
 
-    const pad = document.querySelector('#movePad');
-    const knob = pad?.querySelector('i');
-    const look = document.querySelector('#lookZone');
-    this._pad = pad; this._knob = knob;
+  /** Returns the element if present and not wired yet (marks it wired). */
+  _claim(selector) {
+    const el = typeof document !== 'undefined' ? document.querySelector(selector) : null;
+    if (!el || this._bound.has(el)) return null;
+    this._bound.add(el);
+    hardenTouch(el);
+    return el;
+  }
+
+  /**
+   * Wires the touch controls (#movePad #lookZone #fireBtn #adsBtn #jumpBtn #slideBtn #reloadBtn #grenadeBtn #crouchBtn
+   * #swapBtn #camBtn #lightBtn #pauseBtn) that exist right now. Idempotent: call again after the HUD adds controls.
+   */
+  bindControls() {
+    const pad = this._claim('#movePad');
+    const look = this._claim('#lookZone');
     if (pad) {
+      const knob = pad.querySelector('i');
+      this._pad = pad; this._knob = knob;
       const update = e => {
         const r = this._padRect || (this._padRect = pad.getBoundingClientRect());
         const x = e.clientX - (r.left + r.width / 2);
@@ -266,7 +291,7 @@ export class InputRouter {
     }
 
     const bindHold = (id, action) => {
-      const el = document.querySelector(id); if (!el) return null;
+      const el = this._claim(id); if (!el) return null;
       const down = e => {
         e.preventDefault();
         if (!this._enabled) return;
@@ -280,7 +305,7 @@ export class InputRouter {
     };
     // Hybrid hold/toggle (ADS, crouch): tap < TAP_TOGGLE_MS flips a toggle, longer press behaves as hold.
     const bindHybrid = (id, action, onToggle, onDown) => {
-      const el = document.querySelector(id); if (!el) return;
+      const el = this._claim(id); if (!el) return;
       let downAt = 0, pid = null;
       el.addEventListener('pointerdown', e => {
         e.preventDefault();
@@ -300,7 +325,7 @@ export class InputRouter {
       el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
     };
     const bindTap = (id, action) => {
-      const el = document.querySelector(id); if (!el) return;
+      const el = this._claim(id); if (!el) return;
       el.addEventListener('pointerdown', e => {
         e.preventDefault();
         if (action === 'pause') { this._pause(); return; } // pause must work while the menu is open
