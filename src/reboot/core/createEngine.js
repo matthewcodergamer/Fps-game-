@@ -1,6 +1,6 @@
 import { WebGPUEngine } from '@babylonjs/core/Engines/webgpuEngine.js';
 
-const WEBGPU_REQUIRED = 'Project Strike Reboot requires WebGPU. This build intentionally has no hidden WebGL renderer fallback.';
+const WEBGPU_REQUIRED = 'Project Strike Reboot requires WebGPU. This build intentionally has no hidden WebGL renderer fallback.\n\niPhone: use Safari on iOS 26 or newer (Settings > General > Software Update).\nDesktop: use Chrome or Edge 113+, or Safari 26+.';
 
 /**
  * WebGPU-only engine. Resolution is driven by profile.render.pixelRatio (CSS-pixel multiplier) through the hardware

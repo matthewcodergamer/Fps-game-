@@ -10,7 +10,7 @@ export class RifleSystem {
     if(this.reload>0){this.reload-=dt;if(this.reload<=0){const n=Math.min(30-this.mag,this.reserve);this.mag+=n;this.reserve-=n;}}
     if(input.fire && this.reload<=0 && this.cooldown<=0 && this.mag>0) this.fire();
     this.aimPitch*=Math.exp(-dt*12);this.aimYaw*=Math.exp(-dt*13);this.weaponKick*=Math.exp(-dt*18);this.weaponPitch*=Math.exp(-dt*15);this.cameraImpulse*=Math.exp(-dt*20);
-    const hip=new Vector3(.24,-.24,.62), ads=new Vector3(0,-.155,.47); this.weapon.root.position.copyFrom(Vector3.Lerp(hip,ads,this.ads));
+    const vm=this.weapon.viewmodel, hip=this._hip??=Vector3.FromArray(vm?.hip??[.24,-.24,.62]), ads=this._adsPos??=Vector3.FromArray(vm?.ads??[0,-.155,.47]); Vector3.LerpToRef(hip,ads,this.ads,this.weapon.root.position);
     this.weapon.root.position.z += this.weaponKick; this.weapon.root.rotation.x=.015+this.weaponPitch; this.hud.setAmmo(this.mag,this.reserve,this.reload>0);
     return { cameraPitch:this.cameraImpulse, aimPitch:this.aimPitch, aimYaw:this.aimYaw, ads:this.ads };
   }

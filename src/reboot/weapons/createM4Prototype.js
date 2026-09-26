@@ -738,7 +738,7 @@ export function createM4Prototype(scene, camera, materials = null) {
     parts: { magazine, chargingHandle, slide: null, optic, reticle, body: metal, furniture: poly },
     grips, sightHeight: SIGHT_HEIGHT,
     // recommended viewmodel offsets (camera space) for this model's origin
-    viewmodel: { hip: [0.2, -0.22, 0.55], ads: [0, -SIGHT_HEIGHT, 0.45] },
+    viewmodel: { hip: [0.17, -0.2, 0.52], ads: [0, -SIGHT_HEIGHT, 0.45] },
     stats: { triangles: tris, drawCalls: meshes.length },
   };
 }

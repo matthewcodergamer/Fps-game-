@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#06080d" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Project Strike Reboot</title>
+  <title>Project Strike — Desktop</title>
   <link rel="icon" href="data:," />
   <link rel="stylesheet" href="./styles.css" />
 </head>
@@ -69,6 +69,7 @@
       } catch (error) { console.info('Legacy cache cleanup skipped', error); }
     })();
   </script>
+  <script>window.__PROJECT_STRIKE_PLATFORM__ = 'desktop';</script>
   <script type="module" src="./src/reboot/main.js"></script>
 </body>
 </html>

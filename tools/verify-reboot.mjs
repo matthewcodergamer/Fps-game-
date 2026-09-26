@@ -6,11 +6,10 @@ const fail = message => { throw new Error(message); };
 const required = [
   'src/reboot/main.js', 'src/reboot/core/createEngine.js', 'src/reboot/core/DeviceProfile.js', 'src/reboot/core/Settings.js',
   'src/reboot/core/PerformanceGovernor.js', 'src/reboot/physics/HavokWorld.js', 'src/reboot/physics/Raycast.js',
-  'src/reboot/player/StrikeCharacterController.js', 'src/reboot/player/CameraRig.js', 'src/reboot/weapons/WeaponSystem.js',
-  'src/reboot/weapons/WeaponHandling.js', 'src/reboot/weapons/RecoilPattern.js', 'src/reboot/weapons/WeaponDefs.js',
-  'src/reboot/world/createVerticalSlice.js', 'src/reboot/lighting/LightingDirector.js', 'src/reboot/lighting/ProceduralSky.js',
-  'src/reboot/render/PostFXStack.js', 'src/reboot/render/BodycamPostProcess.js', 'src/reboot/render/MaterialLibrary.js',
-  'src/reboot/audio/AudioEngine.js', 'index.html', 'desktop.html', 'ASSET_LICENSES.json'
+  'src/reboot/player/StrikeCharacterController.js', 'src/reboot/player/CameraRig.js', 'src/reboot/weapons/RifleSystem.js',
+  'src/reboot/weapons/createM4Prototype.js', 'src/reboot/world/createVerticalSlice.js', 'src/reboot/lighting/LightingDirector.js',
+  'src/reboot/lighting/ProceduralSky.js', 'src/reboot/render/PostFXStack.js', 'src/reboot/render/BodycamPostProcess.js',
+  'src/reboot/render/MaterialLibrary.js', 'index.html', 'desktop.html', 'ASSET_LICENSES.json'
 ];
 for (const file of required) if (!fs.existsSync(file)) fail(`Missing reboot file: ${file}`);
 

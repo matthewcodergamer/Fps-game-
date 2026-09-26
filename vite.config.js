@@ -7,6 +7,7 @@ export default defineConfig({
     target: 'es2022',
     sourcemap: true,
     assetsInlineLimit: 2048,
-    chunkSizeWarningLimit: 1800
+    chunkSizeWarningLimit: 1800,
+    rollupOptions: { input: { main: 'index.html', desktop: 'desktop.html' } }
   }
 });
